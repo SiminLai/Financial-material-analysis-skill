@@ -1,6 +1,10 @@
+import asyncio
+
+
 from providers.llm_provider import LLMProvider
 from providers.pdf_provider import PDFProvider
 from providers.excel_provider import ExcelProvider
+
 
 from tools.pdf_parser_tool import PDFParserTool
 from tools.excel_parser_tool import ExcelParserTool
@@ -9,38 +13,111 @@ from tools.metric_extractor_tool import MetricExtractorTool
 from tools.risk_detection_tool import RiskDetectionTool
 from tools.report_generator_tool import ReportGeneratorTool
 
-from workflow.financial_workflow import FinancialWorkflow
-from skills.financial_analysis_skill import FinancialAnalysisSkill
 
-from state.workflow_state import WorkflowState
+from graph.financial_graph import create_finance_graph
 
-def main():
-    llm_provider = LLMProvider("deepseek-v4-flash",api_key="")
-    pdf_provider = PDFProvider()
-    excel_provider = ExcelProvider()
 
-    pdf_tool = PDFParserTool(pdf_provider)
-    excel_tool = ExcelParserTool(excel_provider)
-    document_tool = DocumentParserTool(pdf_tool, excel_tool)
-    metric_tool = MetricExtractorTool(llm_provider)
-    risk_tool = RiskDetectionTool(llm_provider)
-    report_tool = ReportGeneratorTool(llm_provider)
+from mcp_local.manager import MCPManager
 
-    workflow = FinancialWorkflow(
-        tools={
-            "parser": document_tool,
-            "metric": metric_tool,
-            "risk": risk_tool,
-            "report": report_tool
-        }
+
+
+async def main():
+
+    mcp_manager = MCPManager(
+        "config/mcp.json"
     )
 
-    skill = FinancialAnalysisSkill(workflow)
+    try:
 
-    result = skill.invoke(r"examples\2025-11-05_Texas_Pacific_Land_Corporation_Announces_Third_174.pdf")
+        # await mcp_manager.register_browser()
 
-    print(result)
+        # browser_tool = mcp_manager.get_tool(
+        #     "browser"
+        # )
+
+        await mcp_manager.register(
+            "tavily"
+        )
+
+
+        search_tool = mcp_manager.get_tool(
+            "tavily"
+        )
+
+
+        llm_provider = LLMProvider(
+            "deepseek-v4-flash",
+            api_key=""
+        )
+
+
+        pdf_provider = PDFProvider()
+        excel_provider = ExcelProvider()
+
+
+        pdf_tool = PDFParserTool(
+            pdf_provider
+        )
+
+        excel_tool = ExcelParserTool(
+            excel_provider
+        )
+
+
+        parser_tool = DocumentParserTool(
+            pdf_tool,
+            excel_tool
+        )
+
+
+        metric_tool = MetricExtractorTool(
+            llm_provider
+        )
+
+
+        risk_tool = RiskDetectionTool(
+            llm_provider
+        )
+
+
+        report_tool = ReportGeneratorTool(
+            llm_provider
+        )
+
+
+        # graph = create_finance_graph(
+        #     parser_tool=parser_tool,
+        #     metric_tool=metric_tool,
+        #     risk_tool=risk_tool,
+        #     browser_tool=browser_tool,
+        #     report_tool=report_tool
+        # )
+
+        graph = create_finance_graph(
+            parser_tool=parser_tool,
+            metric_tool=metric_tool,
+            risk_tool=risk_tool,
+            browser_tool=search_tool,
+            report_tool=report_tool
+        )
+
+
+        result = await graph.ainvoke(
+            {
+                "input_file":
+                r"examples\Q4'25+EarningsRelease+FINAL+v1.pdf"
+            }
+        )
+
+
+        print(result["report"])
+
+
+    finally:
+
+        await mcp_manager.close()
 
 
 if __name__ == "__main__":
-    main()
+
+    asyncio.run(main())
