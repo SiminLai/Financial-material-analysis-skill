@@ -1,4 +1,5 @@
 import json
+import os
 
 from mcp_local.client import MCPClient
 from tools.external_search_mcp_tool import ExternalSearchMCPTool
@@ -34,10 +35,23 @@ class MCPManager:
         config = self.config["servers"][server_name]
 
 
+        env = {}
+
+        # Runtime secret injection
+        if server_name == "tavily":
+
+            tavily_key = os.getenv(
+                "TAVILY_API_KEY"
+            )
+
+            if tavily_key:
+                env["TAVILY_API_KEY"] = tavily_key
+
+
         client = MCPClient(
             command=config["command"],
             args=config["args"],
-            env=config.get("env", {})
+            env=env
         )
 
 
@@ -47,7 +61,6 @@ class MCPManager:
         self.clients[server_name] = client
 
 
-        # 根据 server 类型注册对应 tool
         if server_name == "tavily":
 
             self.tools["tavily"] = ExternalSearchMCPTool(

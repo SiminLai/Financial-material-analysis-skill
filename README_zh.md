@@ -1,109 +1,152 @@
-# 财务报告分析技能
+# Financial Report Analysis Skill
 
-一个用于解析和分析财务文档的轻量级技能。支持 `PDF` 和 `XLSX` 输入，提取结构化指标，评估风险，并生成落地的摘要报告。
+一个基于 LangGraph 构建的金融报告分析 Skill，可自动解析和分析财务文档，支持 PDF 与 XLSX 文件，提取关键财务指标，进行可解释的风险分析，并生成结构化财务分析报告。
 
-## 功能
+支持可选的 MCP 外部搜索能力，默认关闭。
 
-- 从 PDF 和 Excel (`.xlsx`) 文档解析财务内容
-- 提取关键财务指标，如收入、净利润、资产负债率和现金流
-- 执行确定性风险评分并生成可解释的风险分析
-- 生成结构化投资摘要并给出建议
-- 提供统一的文档解析器，支持多格式输入处理
+---
 
-## 支持输入
+## 功能特点
 
-- 年度报告
-- 季度报告
-- 财报发布
-- 财务报表
-- 投资者演示材料
-- 基于 Excel 的财务表格
+- 支持 PDF 和 Excel（`.xlsx`）财务文档解析
+- 自动提取收入、净利润、资产负债率、现金流等关键财务指标
+- 提供可解释的财务风险分析
+- 自动生成结构化财务分析报告
+- 支持统一的多格式文档解析
+- 基于 LangGraph 构建工作流
+- 支持可选 MCP 外部搜索（默认关闭）
+
+---
+
+## 支持的文档类型
+
+包括但不限于：
+
+- 年报（Annual Report）
+- 季报（Quarterly Report）
+- 财报发布（Earnings Release）
+- 财务报表（Financial Statement）
+- 投资者演示文稿（Investor Presentation）
+- Excel 财务数据表
+
+支持格式：
+
+- `.pdf`
+- `.xlsx`
+
+---
 
 ## 项目结构
 
-- `main.py` - 示例入口与工作流连接
-- `providers/` - PDF 和 Excel 数据提供者
-- `tools/` - 解析、指标提取、风险检测、报告生成工具
-- `skills/` - 技能包装和执行逻辑
-- `state/` - 工作流状态容器
-- `validators/` - 模式验证辅助
-- `workflow/` - 工作流编排
-- `examples(pdf)/` - 示例输入文档
+```
+financial-report-analysis-skill/
+
+├── config/
+├── examples/
+├── graph/
+├── mcp_local/
+├── providers/
+├── skills/
+├── state/
+├── tools/
+├── validators/
+├── workflow/
+├── main.py
+└── requirements.txt
+```
+
+---
 
 ## 安装
+
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
+---
+
 ## 配置
 
-此技能通过 `providers/llm_provider.py` 使用 DeepSeek REST 客户端。
-可以通过设置环境变量来配置 API Key：
+### 配置 DeepSeek API
+
+Linux/macOS：
 
 ```bash
 export DEEPSEEK_API_KEY="your_api_key"
 ```
 
-在 Windows PowerShell 中：
+Windows PowerShell：
 
 ```powershell
-$env:DEEPSEEK_API_KEY = "your_api_key"
+$env:DEEPSEEK_API_KEY="your_api_key"
 ```
+
+---
+
+### （可选）开启 MCP 外部搜索
+
+默认情况下，外部搜索关闭。
+
+如需启用 Tavily 搜索，请配置：
+
+Linux/macOS：
+
+```bash
+export ENABLE_TAVILY=true
+export TAVILY_API_KEY="your_api_key"
+```
+
+Windows PowerShell：
+
+```powershell
+$env:ENABLE_TAVILY="true"
+$env:TAVILY_API_KEY="your_api_key"
+```
+
+开启后，系统可能向搜索服务发送以下信息：
+
+- 公司名称
+- 风险评分
+- 风险因素
+- 财务搜索关键词
+
+**不会发送：**
+
+- 原始 PDF 文件
+- 原始 Excel 文件
+- 完整财务报告内容
+
+---
 
 ## 使用方法
 
-从仓库根目录运行技能：
+在项目根目录运行：
 
 ```bash
 python main.py
 ```
 
-`main.py` 示例当前使用样例文件路径调用技能。你可以将路径替换为任何支持的 PDF 或 XLSX 文档。
+默认情况下：
 
-## 示例
+- 不开启外部搜索
+- 仅基于本地文档完成分析
 
-```python
-from providers.llm_provider import LLMProvider
-from providers.pdf_provider import PDFProvider
-from providers.excel_provider import ExcelProvider
+---
 
-from tools.pdf_parser_tool import PDFParserTool
-from tools.excel_parser_tool import ExcelParserTool
-from tools.document_parser_tool import DocumentParserTool
-from tools.metric_extractor_tool import MetricExtractorTool
-from tools.risk_detection_tool import RiskDetectionTool
-from tools.report_generator_tool import ReportGeneratorTool
+## 局限性
 
-from workflow.financial_workflow import FinancialWorkflow
-from skills.financial_analysis_skill import FinancialAnalysisSkill
+- 更适用于英文财务文档。
+- 分析质量依赖于文档排版和 OCR 质量。
+- 文档解析错误会影响最终分析结果。
+- 生成结果仅供参考，不构成投资建议。
 
-llm_provider = LLMProvider("deepseek-v4-flash")
-pdf_provider = PDFProvider()
-excel_provider = ExcelProvider()
-
-workflow = FinancialWorkflow(
-    tools={
-        "parser": DocumentParserTool(PDFParserTool(pdf_provider), ExcelParserTool(excel_provider)),
-        "metric": MetricExtractorTool(llm_provider),
-        "risk": RiskDetectionTool(llm_provider),
-        "report": ReportGeneratorTool(llm_provider),
-    }
-)
-
-skill = FinancialAnalysisSkill(workflow)
-result = skill.invoke("examples(pdf)/Quarterly financial statements Q1_2025.xlsx")
-print(result)
-```
-
-## 限制
-
-- 主要适用于英文财务文档
-- 提取质量依赖于文档格式和 OCR / 文本质量
-- 指标来源于提取的文本和表格，因此解析错误会影响结果
+---
 
 ## 说明
 
-- 如果使用 Excel 输入，请安装 `openpyxl`
-- 如果使用 PDF 输入，请安装 `pdfplumber` 或 `PyPDF2`
-- 如需使用不同 LLM 端点或模型，可调整 `providers/llm_provider.py`
+- PDF 解析依赖 `pdfplumber` 和 `PyPDF2`。
+- Excel 解析依赖 `openpyxl`。
+- 所有 API Key 建议通过环境变量配置。
+- 外部搜索功能默认关闭，需要用户主动开启。

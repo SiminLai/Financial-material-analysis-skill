@@ -59,35 +59,6 @@ def create_risk_node(risk_tool):
     return risk_node
 
 
-# def create_browser_node(browser_tool):
-
-#     async def browser_node(state):
-
-#         risk = state.get("risk")
-#         metrics = state.get("metrics")
-
-#         if risk is None:
-#             raise ValueError("state is missing required key: 'risk'")
-
-#         if metrics is None:
-#             raise ValueError("state is missing required key: 'metrics'")
-
-#         # 可以根据自己的业务改 Prompt
-#         query = (
-#             f"Search latest financial risks and news about "
-#             f"{metrics.get('company_name', '')}. "
-#             f"Current risk score: {risk.get('risk_score', '')}"
-#         )
-
-#         browser_result = await browser_tool.ainvoke({
-#             "query": query
-#         })
-
-#         state["browser_result"] = browser_result
-
-#         return state
-
-#     return browser_node
 def create_browser_node(browser_tool):
 
     async def browser_node(state):
@@ -106,14 +77,9 @@ def create_browser_node(browser_tool):
             )
 
 
-        # =========================
-        # Build company-focused query
-        # =========================
-
         company = (
             metrics.get("company_name")
-            or state.get("document", {})
-            .get("company_name")
+            or state.get("document", {}).get("company_name")
             or ""
         )
 
@@ -123,15 +89,14 @@ def create_browser_node(browser_tool):
             []
         )
 
-
-        risk_reason = " ".join(
-            risk_flags
-        )
+        risk_reason = " ".join(risk_flags)
 
 
         query = f"""
+Company:
 {company}
 
+Search topics:
 latest earnings report
 financial outlook
 profitability risk
@@ -152,12 +117,9 @@ Risk score:
             }
         )
 
-
         state["browser_result"] = browser_result
 
-
         return state
-
 
     return browser_node
 

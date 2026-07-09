@@ -21,11 +21,12 @@ def create_finance_graph(
     report_tool,
 ):
 
-    # 1. Create graph
+    # 1. Create graph builder
+
     builder = StateGraph(FinanceState)
 
 
-    # 2. Create nodes
+    # 2. Create core nodes
 
     parser_node = create_parser_node(
         parser_tool
@@ -39,16 +40,12 @@ def create_finance_graph(
         risk_tool
     )
 
-    browser_node = create_browser_node(
-        browser_tool
-    )
-
     report_node = create_report_node(
         report_tool
     )
 
 
-    # 3. Register nodes
+    # 3. Register mandatory nodes
 
     builder.add_node(
         "parser",
@@ -65,10 +62,22 @@ def create_finance_graph(
         risk_node
     )
 
-    builder.add_node(
-        "browser",
-        browser_node
-    )
+
+    # 4. Register optional browser node
+
+    if browser_tool is not None:
+
+        browser_node = create_browser_node(
+            browser_tool
+        )
+
+        builder.add_node(
+            "browser",
+            browser_node
+        )
+
+
+    # 5. Register report node
 
     builder.add_node(
         "report",
@@ -76,12 +85,15 @@ def create_finance_graph(
     )
 
 
-    # 4. Register edges
+    # 6. Build graph edges
 
-    build_edges(builder)
+    build_edges(
+        builder,
+        enable_browser=browser_tool is not None
+    )
 
 
-    # 5. Compile
+    # 7. Compile graph
 
     graph = builder.compile()
 

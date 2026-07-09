@@ -3,12 +3,8 @@ from langgraph.graph import START, END
 from .router import route_after_risk
 
 
-def build_edges(builder):
-    """
-    Register all graph edges.
-    """
+def build_edges(builder, enable_browser: bool):
 
-    # Main pipeline
     builder.add_edge(
         START,
         "parser"
@@ -25,22 +21,33 @@ def build_edges(builder):
     )
 
 
-    # Risk based routing
-    builder.add_conditional_edges(
-        "risk",
-        route_after_risk,
-        {
-            "browser": "browser",
-            "report": "report",
-        },
-    )
+
+    if enable_browser:
+
+        builder.add_conditional_edges(
+            "risk",
+            route_after_risk,
+            {
+                "browser": "browser",
+                "report": "report",
+            },
+        )
 
 
-    # Optional external evidence retrieval
-    builder.add_edge(
-        "browser",
-        "report"
-    )
+        builder.add_edge(
+            "browser",
+            "report"
+        )
+
+    else:
+
+
+
+        builder.add_edge(
+            "risk",
+            "report"
+        )
+
 
 
     builder.add_edge(

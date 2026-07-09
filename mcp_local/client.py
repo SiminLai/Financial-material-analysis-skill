@@ -26,12 +26,11 @@ class MCPClient:
 
 
 
-
     async def connect(self):
-        
+
         print("COMMAND:", self.command)
         print("ARGS:", self.args)
-        print("ENV:", self.env)
+
 
         server_params = StdioServerParameters(
             command=self.command,
@@ -59,19 +58,20 @@ class MCPClient:
 
         await self._session_context.initialize()
 
+
         self.session = self._session_context
 
-        # 查看 Server 提供了哪些工具
+
         tools = await self.session.list_tools()
 
+
         print("\n===== MCP AVAILABLE TOOLS =====")
+
         for tool in tools.tools:
             print(f"- {tool.name}")
             print(f"  description: {tool.description}")
+
         print("===============================\n")
-
-
-        self.session = self._session_context
 
 
 
@@ -94,7 +94,14 @@ class MCPClient:
                 None
             )
 
-    async def call_tool(self, name, arguments):
+
+
+    async def call_tool(
+        self,
+        name,
+        arguments
+    ):
+
         return await self.session.call_tool(
             name=name,
             arguments=arguments

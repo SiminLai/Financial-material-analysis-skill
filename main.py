@@ -1,5 +1,5 @@
 import asyncio
-
+import os
 
 from providers.llm_provider import LLMProvider
 from providers.pdf_provider import PDFProvider
@@ -29,25 +29,21 @@ async def main():
 
     try:
 
-        # await mcp_manager.register_browser()
-
-        # browser_tool = mcp_manager.get_tool(
-        #     "browser"
-        # )
-
-        await mcp_manager.register(
-            "tavily"
+        enable_tavily = (
+            os.getenv("ENABLE_TAVILY", "false").lower() == "true"
         )
 
+        tavily_key = os.getenv("TAVILY_API_KEY")
 
-        search_tool = mcp_manager.get_tool(
-            "tavily"
-        )
+        search_tool = None
+
+        if enable_tavily and tavily_key:
+            await mcp_manager.register("tavily")
+            search_tool = mcp_manager.get_tool("tavily")
 
 
         llm_provider = LLMProvider(
-            "deepseek-v4-flash",
-            api_key=""
+            model_name="deepseek-v4-flash"
         )
 
 
@@ -84,15 +80,6 @@ async def main():
             llm_provider
         )
 
-
-        # graph = create_finance_graph(
-        #     parser_tool=parser_tool,
-        #     metric_tool=metric_tool,
-        #     risk_tool=risk_tool,
-        #     browser_tool=browser_tool,
-        #     report_tool=report_tool
-        # )
-
         graph = create_finance_graph(
             parser_tool=parser_tool,
             metric_tool=metric_tool,
@@ -104,11 +91,9 @@ async def main():
 
         result = await graph.ainvoke(
             {
-                "input_file":
-                r"examples\Q4'25+EarningsRelease+FINAL+v1.pdf"
+                "input_file": r"examples\Q4'25+EarningsRelease+FINAL+v1.pdf"
             }
         )
-
 
         print(result["report"])
 

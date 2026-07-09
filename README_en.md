@@ -1,109 +1,154 @@
 # Financial Report Analysis Skill
 
-A lightweight financial analysis skill for parsing and analyzing financial documents. It supports both `PDF` and `XLSX` inputs, extracts structured metrics, evaluates risk, and generates grounded summary reports.
+A lightweight financial analysis skill built with LangGraph for parsing and analyzing financial documents. It supports both PDF and XLSX inputs, extracts structured financial metrics, performs explainable risk analysis, and generates comprehensive financial reports.
+
+Optional MCP-based external evidence retrieval is supported and disabled by default.
+
+---
 
 ## Features
 
 - Parse financial documents from PDF and Excel (`.xlsx`) files
 - Extract key financial metrics such as revenue, net profit, debt ratio, and cash flow
-- Perform deterministic risk scoring and explainable risk analysis
-- Generate a structured investment summary with recommendations
-- Unified document parser for multi-format input handling
+- Perform explainable financial risk analysis
+- Generate structured financial analysis reports
+- Unified document parser for multi-format input
+- LangGraph-based workflow orchestration
+- Optional MCP external search support (disabled by default)
+
+---
 
 ## Supported Inputs
 
-- Annual reports
-- Quarterly reports
-- Earnings releases
-- Financial statements
-- Investor presentations
-- Excel-based financial tables
+Supported document types include:
+
+- Annual Reports
+- Quarterly Reports
+- Earnings Releases
+- Financial Statements
+- Investor Presentations
+- Excel-based Financial Tables
+
+Supported file formats:
+
+- `.pdf`
+- `.xlsx`
+
+---
 
 ## Project Structure
 
-- `main.py` - example entry point and workflow wiring
-- `providers/` - data providers for PDF and Excel
-- `tools/` - parsing, metric extraction, risk detection, and report generation tools
-- `skills/` - skill wrapper and execution logic
-- `state/` - workflow state container
-- `validators/` - schema validation helpers
-- `workflow/` - workflow orchestration
-- `examples(pdf)/` - sample input documents
+```
+financial-report-analysis-skill/
+
+├── config/
+├── examples/
+├── graph/
+├── mcp_local/
+├── providers/
+├── skills/
+├── state/
+├── tools/
+├── validators/
+├── workflow/
+├── main.py
+└── requirements.txt
+```
+
+---
 
 ## Installation
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
+---
+
 ## Configuration
 
-The skill uses a DeepSeek REST client in `providers/llm_provider.py`.
-You can configure the API key by setting the environment variable:
+### DeepSeek API
+
+Configure your DeepSeek API key through an environment variable.
+
+Linux/macOS:
 
 ```bash
 export DEEPSEEK_API_KEY="your_api_key"
 ```
 
-On Windows PowerShell:
+Windows PowerShell:
 
 ```powershell
-$env:DEEPSEEK_API_KEY = "your_api_key"
+$env:DEEPSEEK_API_KEY="your_api_key"
 ```
+
+---
+
+### Optional MCP External Search
+
+External search is disabled by default.
+
+To enable MCP-based Tavily search, configure:
+
+Linux/macOS:
+
+```bash
+export ENABLE_TAVILY=true
+export TAVILY_API_KEY="your_api_key"
+```
+
+Windows PowerShell:
+
+```powershell
+$env:ENABLE_TAVILY="true"
+$env:TAVILY_API_KEY="your_api_key"
+```
+
+When enabled, the Skill may send the following information to the configured search service:
+
+- Company name
+- Risk score
+- Financial risk factors
+- Financial search keywords
+
+The Skill does **not** upload:
+
+- Original PDF documents
+- Original Excel files
+- Complete document contents
+
+---
 
 ## Usage
 
-Run the skill from the repository root:
+Run the Skill from the project root:
 
 ```bash
 python main.py
 ```
 
-The `main.py` example currently invokes the skill against a sample file path. You can change the file path to any supported PDF or XLSX document.
+By default:
 
-## Example
+- External search is disabled.
+- Financial reports are generated using local document analysis only.
 
-```python
-from providers.llm_provider import LLMProvider
-from providers.pdf_provider import PDFProvider
-from providers.excel_provider import ExcelProvider
-
-from tools.pdf_parser_tool import PDFParserTool
-from tools.excel_parser_tool import ExcelParserTool
-from tools.document_parser_tool import DocumentParserTool
-from tools.metric_extractor_tool import MetricExtractorTool
-from tools.risk_detection_tool import RiskDetectionTool
-from tools.report_generator_tool import ReportGeneratorTool
-
-from workflow.financial_workflow import FinancialWorkflow
-from skills.financial_analysis_skill import FinancialAnalysisSkill
-
-llm_provider = LLMProvider("deepseek-v4-flash")
-pdf_provider = PDFProvider()
-excel_provider = ExcelProvider()
-
-workflow = FinancialWorkflow(
-    tools={
-        "parser": DocumentParserTool(PDFParserTool(pdf_provider), ExcelParserTool(excel_provider)),
-        "metric": MetricExtractorTool(llm_provider),
-        "risk": RiskDetectionTool(llm_provider),
-        "report": ReportGeneratorTool(llm_provider),
-    }
-)
-
-skill = FinancialAnalysisSkill(workflow)
-result = skill.invoke("examples(pdf)/Quarterly financial statements Q1_2025.xlsx")
-print(result)
-```
+---
 
 ## Limitations
 
-- Best suited for English financial documents
-- Extraction quality depends on document formatting and OCR/text quality
-- Metrics are derived from extracted text and tables, so errors in parsing affect results
+- Best suited for English financial documents.
+- Analysis quality depends on document formatting and OCR quality.
+- Incorrect parsing may affect extracted metrics.
+- Generated reports are intended for informational purposes only.
+
+---
 
 ## Notes
 
-- If using Excel input, install `openpyxl`
-- If using PDF input, install `pdfplumber` or `PyPDF2`
-- Adjust `providers/llm_provider.py` if you need a different LLM endpoint or model
+- PDF parsing requires `pdfplumber` and `PyPDF2`.
+- Excel parsing requires `openpyxl`.
+- API keys should always be configured using environment variables.
+- Optional external search is disabled by default.
