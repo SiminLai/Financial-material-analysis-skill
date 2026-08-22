@@ -150,3 +150,22 @@ python main.py
 - Excel 解析依赖 `openpyxl`。
 - 所有 API Key 建议通过环境变量配置。
 - 外部搜索功能默认关闭，需要用户主动开启。
+
+---
+
+## 检查点（Checkpoint）
+
+在图构建阶段，系统会写入一个轻量级的 LangGraph 检查点文件（记录节点名称和边），用于调试和检查：
+
+```
+workspace/cache/langgraph_checkpoint.json
+```
+
+该文件仅用于检查和可重复性验证，不会序列化函数调用体。
+
+---
+
+## 架构图
+
+查看系统架构图： [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+

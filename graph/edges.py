@@ -1,4 +1,8 @@
-from langgraph.graph import START, END
+try:
+    from langgraph.graph import START, END
+except Exception:
+    START = "__start__"
+    END = "__end__"
 
 from .router import route_after_risk
 

@@ -7,8 +7,23 @@ try:
     from PyPDF2 import PdfReader
 except ImportError:
     PdfReader = None
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
+try:
+    import pytesseract
+    from PIL import Image
+except Exception:
+    pytesseract = None
+    Image = None
 
 from providers.base_provider import BaseProvider
+try:
+    from providers.table_extractor import extract_tables_from_doc, extract_evidence_from_tables
+except Exception:
+    extract_tables_from_doc = None
+    extract_evidence_from_tables = None
 
 
 class PDFProvider(BaseProvider):
@@ -35,6 +50,51 @@ class PDFProvider(BaseProvider):
         tables = []
 
         
+        # Prefer pdfplumber, but try PyMuPDF (fitz) first if available because
+        # it often preserves layout and can render pages for OCR fallback.
+        if fitz:
+            try:
+                doc = fitz.open(pdf_path)
+                pages_count = doc.page_count
+                # attempt table extraction via PyMuPDF heuristics
+                tables = []
+                table_evidence = []
+                if extract_tables_from_doc:
+                    try:
+                        tables = extract_tables_from_doc(doc)
+                        if extract_evidence_from_tables:
+                            table_evidence = extract_evidence_from_tables(tables)
+                    except Exception:
+                        tables = []
+                        table_evidence = []
+                for page_num in range(pages_count):
+                    page = doc.load_page(page_num)
+                    text = page.get_text("text") or ""
+                    if text:
+                        raw_text += f"\n--- Page {page_num + 1} ---\n{text}"
+                    else:
+                        # low text: try OCR if available
+                        if pytesseract and Image:
+                            pix = page.get_pixmap()
+                            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                            ocr_text = pytesseract.image_to_string(img) or ""
+                            if ocr_text:
+                                raw_text += f"\n--- Page {page_num + 1} (ocr) ---\n{ocr_text}"
+                return {
+                    "text": raw_text.strip(),
+                    "tables": tables,
+                    "evidence": table_evidence,
+                    "meta": {
+                        "source": pdf_path,
+                        "pages": pages_count,
+                        "mock": False,
+                        "method": "pymupdf"
+                    }
+                }
+            except Exception:
+                # fall through to pdfplumber/PyPDF2
+                pass
+
         if pdfplumber:
             try:
                 with pdfplumber.open(pdf_path) as pdf:

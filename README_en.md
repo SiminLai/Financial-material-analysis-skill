@@ -152,3 +152,40 @@ By default:
 - Excel parsing requires `openpyxl`.
 - API keys should always be configured using environment variables.
 - Optional external search is disabled by default.
+
+---
+
+## Checkpointing
+
+During graph construction the skill writes a lightweight LangGraph checkpoint that records node names and edges for inspection. The file is written to:
+
+```
+workspace/cache/langgraph_checkpoint.json
+```
+
+This checkpoint is intended for debugging and reproducibility inspection only; it does not serialize node callables.
+
+---
+
+## Architecture
+
+See the architecture diagram: [ARCHITECTURE](docs/ARCHITECTURE.md)
+
+---
+
+## Preparing a Release (safe cleanup)
+
+Before publishing to GitHub you may want to remove runtime caches and large local artifacts. A safe dry-run script is provided:
+
+```bash
+python scripts/prepare_release.py
+```
+
+To actually delete the suggested files, run:
+
+```bash
+python scripts/prepare_release.py --apply
+```
+
+The script will list candidate paths (dry-run) and ask for confirmation before deleting when `--apply` is used.
+

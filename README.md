@@ -6,3 +6,5 @@ Choose your preferred language:
 
 - [English](README_en.md)
 - [中文](README_zh.md)
+
+See the system architecture diagram in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
