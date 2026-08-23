@@ -1,214 +1,72 @@
 ---
 name: financial-report-analysis-skill
-description: Analyze financial documents including annual reports, quarterly reports, earnings releases, financial statements, and investor presentations. Extract structured financial metrics, perform explainable financial risk analysis, and generate comprehensive financial reports. Supports PDF and XLSX inputs with optional MCP-based external evidence retrieval.
-version: 1.0.3
-author: LLLLLLL
-tags:
-  - finance
-  - financial-analysis
-  - report
-  - pdf
-  - xlsx
-  - risk-analysis
-  - langgraph
-  - mcp
+description: Analyze PDF or XLSX financial documents, including annual and quarterly reports, earnings releases, financial statements, and investor materials. Extract strictly grounded company, revenue, net-profit, debt-ratio, and operating-cash-flow metrics; score deterministic financial risks; and generate evidence-aware JSON reports. Use when working with this repository to run, extend, debug, or evaluate its LangGraph-based financial-document analysis pipeline, including its optional DeepSeek and Tavily MCP integrations.
 ---
 
 # Financial Report Analysis Skill
 
-## Overview
+## Operating model
 
-Financial Report Analysis Skill is an automated financial document analysis workflow built on a modular architecture.
-
-It parses uploaded financial documents, extracts structured financial metrics, performs explainable financial risk analysis, and generates comprehensive financial reports.
-
-Supported document types include:
-
-- Annual Reports
-- Quarterly Reports
-- Earnings Releases
-- Financial Statements
-- Investor Presentations
-- Excel-based Financial Tables
-
-Supported file formats:
-
-- PDF (`.pdf`)
-- Excel (`.xlsx`)
-
----
-
-## When to Use
-
-Use this Skill when users:
-
-- Upload financial reports or financial statements
-- Request financial document analysis
-- Need extraction of key financial metrics
-- Ask for financial ratio analysis
-- Need company risk assessment
-- Want executive summaries
-- Ask for profitability, liquidity, leverage, or cash flow analysis
-
-Typical keywords include:
-
-- financial report
-- annual report
-- quarterly report
-- earnings release
-- SEC filing
-- balance sheet
-- income statement
-- cash flow statement
-- financial analysis
-- financial ratio
-- investment summary
-
----
-
-## Workflow
-
-The Skill executes the following workflow:
-
-1. Parse uploaded PDF or XLSX documents.
-2. Extract structured financial metrics using the LLM.
-3. Validate extracted financial values.
-4. Perform explainable financial risk analysis.
-5. Optionally retrieve external evidence through MCP-enabled search when configured.
-6. Generate a structured financial analysis report.
-
-Workflow diagram:
+Run the pipeline in this order:
 
 ```text
-Document
-    │
-    ▼
-Document Parser
-    │
-    ▼
-Metric Extraction
-    │
-    ▼
-Risk Detection
-    │
-    ▼
-(Optional) External Evidence Retrieval
-    │
-    ▼
-Report Generation
+PDF/XLSX -> parser -> metric extraction -> risk scoring -> [Tavily MCP, if enabled] -> report
 ```
 
----
+The graph is assembled in `graph/financial_graph.py` and started from `main.py`. `main.py` currently uses the bundled Q4 earnings-release PDF as its demo input. Change `init_state["input_file"]` or invoke the compiled graph with another local `.pdf` or `.xlsx` file to analyze a different document.
 
-## External Evidence Retrieval
+## Inputs and outputs
 
-This Skill supports optional external evidence retrieval through MCP.
+- Accept `.pdf` and `.xlsx` input files. PDF text and tables are parsed with `pdfplumber`/`PyPDF2`; Excel workbooks use `openpyxl`.
+- Extract only values explicitly present in the parsed document. The normalized metric schema is `company_name`, `revenue`, `net_profit`, `debt_ratio`, and `cash_flow`, plus validation metadata.
+- Return a report dictionary containing `summary`, `risk_assessment`, `recommendation`, `key_points`, `external_evidence`, and `meta`.
+- Treat generated reports as informational analysis, not investment advice. Preserve reported units and periods; do not compare or combine values with different units or reporting periods without making that limitation explicit.
 
-External search is:
+## Run locally
 
-- Disabled by default.
-- Enabled only when explicitly configured by the user.
-- Triggered only when external search is enabled and additional evidence is required during risk analysis.
+Install the pinned dependencies, configure credentials as needed, then run the demo:
 
-When enabled, the following information may be sent to the configured search service:
-
-- Company name
-- Financial risk categories
-- Risk score
-- Financial search keywords
-
-The Skill does **not** upload:
-
-- Original PDF documents
-- Original Excel files
-- Complete document contents
-- Full financial statements
-
----
-
-## Output
-
-The generated report typically contains:
-
-- Executive Summary
-- Revenue Analysis
-- Profitability Analysis
-- Balance Sheet Analysis
-- Cash Flow Analysis
-- Financial Ratio Analysis
-- Risk Assessment
-- Overall Financial Health
-- Investment Summary
-
----
-
-## Example
-
-### Input
-
-Upload:
-
-```
-Texas Instruments 2025 Annual Report.pdf
+```powershell
+pip install -r requirements.txt
+$env:DEEPSEEK_API_KEY = "your_api_key"  # optional; no key uses deterministic stub LLM responses
+python main.py
 ```
 
-or
+`LLMProvider` calls the DeepSeek-compatible chat-completions endpoint. Without `DEEPSEEK_API_KEY`, the project intentionally falls back to stub responses for offline/demo execution; the output is not a meaningful financial analysis.
 
-```
-Quarterly Financial Statement.xlsx
-```
+## Risk and recommendation rules
 
-### Output
+Keep the deterministic rules as the source of truth:
 
-Example report sections:
+- The risk engine penalizes missing metrics, elevated leverage, low or negative cash flow, losses, weak/negative margins, profit-cash-flow mismatches, and implausible revenue values.
+- Risk levels are `LOW` below 0.3, `MEDIUM` from 0.3 to below 0.7, and `HIGH` at or above 0.7.
+- LLM output may explain the rule flags but must not change the risk score.
+- The final recommendation is enforced by code: `BUY` requires risk below 0.3 plus positive profit and cash flow; `HOLD` requires risk below 0.7; otherwise it is `SELL`.
 
-- Executive Summary
-- Revenue Analysis
-- Net Income Analysis
-- Cash Flow Analysis
-- Debt Ratio
-- Financial Ratios
-- Risk Assessment
-- Overall Financial Health
-- Investment Summary
+## Optional external search
 
----
+Enable Tavily MCP only when external context is needed:
 
-## Project Structure
-
-```
-financial-report-analysis-skill/
-
-├── graph/
-├── providers/
-├── tools/
-├── skills/
-├── state/
-├── validators/
-├── workflow/
-├── config/
-├── examples/
-└── main.py
+```powershell
+$env:ENABLE_TAVILY = "true"
+$env:TAVILY_API_KEY = "your_api_key"
+python main.py
 ```
 
-The workflow is implemented using LangGraph and executed through `main.py`.
+With both variables set, `main.py` registers the `tavily` MCP server defined in `config/mcp.json`. The graph routes to browser search when the deterministic risk score is at least `0.1`; otherwise it goes directly to reporting. External material is supporting evidence only: never use it to overwrite extracted metrics or the computed risk score, and keep evidence IDs/citations with claims that rely on it.
 
----
+## Evidence, memory, and extension notes
 
-## Limitations
+- Parser and metric nodes save document/table evidence, which the report node converts into readable citations where available.
+- The repository includes local memory, vector-store, RAG, imputation, and reflection modules. Some are initialized for experimentation, but the current graph edges do **not** execute `impute` or `reflect`; connect them deliberately in `graph/edges.py` before representing their results as part of the normal pipeline.
+- Add a new input format by extending `DocumentParserTool` and its provider, then retain the normalized document shape expected by `MetricExtractorTool`.
+- Add metrics by updating the extractor schema, validation, deterministic risk rules, report consistency checks, and tests together. Do not rely on an LLM-only value for a decision-critical calculation.
 
-- Best suited for English financial documents.
-- Analysis quality depends on document formatting and text extraction quality.
-- OCR quality may affect extracted financial values.
-- Generated reports are intended for informational purposes and should not be considered professional investment advice.
-- External evidence retrieval depends on user configuration and third-party service availability.
+## Repository map
 
----
-
-## Notes
-
-- PDF processing requires PDF parsing dependencies.
-- Excel processing requires `openpyxl`.
-- API keys should be configured using environment variables.
-- External search capability is optional and disabled by default.
-- The Skill uses modular Providers, Tools, and LangGraph nodes to support future extension.
+- `main.py`: demo entry point and dependency wiring.
+- `graph/`: LangGraph nodes, routing, and edges.
+- `tools/`: document parsing, extraction, risk, reporting, RAG, and MCP adapters.
+- `providers/`: PDF, Excel, LLM, embedding, table, and evidence providers.
+- `reflection/` and `memory/`: evidence, retrieval, evaluation, and feedback building blocks.
+- `examples/`: sample financial PDFs and workbook.
