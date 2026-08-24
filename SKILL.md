@@ -1,7 +1,9 @@
+---
 name: financial-report-analysis-skill
 description: "Parse financial PDF/XLSX, extract normalized metrics, run deterministic risk scoring, and produce evidence-cited JSON reports. Optional RAG/MCP integration provides external context without overriding parsed facts. Designed for auditable, evidence-first analyses of financial filings."
-version: 1.0.5
+version: 1.0.6
 author: LLLLLLL
+---
 keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection]
 inputs:
 	- file: pdf|xlsx

@@ -4,3 +4,4 @@ PyPDF2==3.0.1
 requests==2.34.2
 langgraph==1.2.6
 mcp==1.28.1
+numpy==1.26.4
