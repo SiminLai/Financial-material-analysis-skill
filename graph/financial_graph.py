@@ -65,6 +65,8 @@ def create_finance_graph(
     browser_tool,
     report_tool,
     llm_provider=None,
+    embedder=None,
+    rag_tool=None,
 ):
 
     # 1. Create graph builder
@@ -79,7 +81,7 @@ def create_finance_graph(
     from providers.evidence_builder import EvidenceBuilder
     from reflection.feedback_summarizer import FeedbackSummarizer
     from memory.manager import MemoryManager
-    from providers.embedding_provider import EmbeddingProvider
+    from providers.embedding_provider_bge import BGEEmbeddingProvider
     from memory.vector_store import VectorStore
     from tools.rag_tool import RAGTool
     from reflection.reflection_engine import ReflectionEngine
@@ -91,9 +93,17 @@ def create_finance_graph(
     evidence_builder = EvidenceBuilder(evidence_store)
 
     memory_manager = MemoryManager()
-    embedder = EmbeddingProvider(dim=128)
-    vector_store = VectorStore(embedding_provider=embedder, dim=128)
-    rag_tool_internal = RAGTool(memory_manager=memory_manager, vector_store=vector_store)
+    # allow caller to supply an embedder; otherwise create a default (locale-aware)
+    if embedder is None:
+        embedder = BGEEmbeddingProvider(locale=os.getenv("EMBED_LOCALE", "en"), use_fp16=True)
+    vector_store = VectorStore(embedding_provider=embedder, dim=getattr(embedder, 'dim', 128))
+    if rag_tool is None:
+        rag_tool_internal = RAGTool(
+            memory_manager=memory_manager,
+            vector_store=vector_store
+        )
+    else:
+        rag_tool_internal = rag_tool
 
     evaluators = [MissingFieldsEvaluator(), CompletenessEvaluator(), ConsistencyEvaluator()]
     reflection_engine = ReflectionEngine(evaluators, memory_manager=memory_manager, rag_tool=rag_tool_internal, evidence_store=evidence_store)

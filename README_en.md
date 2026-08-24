@@ -155,6 +155,14 @@ By default:
 
 ---
 
+### Embeddings and Vector Store
+
+- This project supports BGE-based embeddings via `providers/embedding_provider_bge.py`. You can select the embedding locale via the environment variable `EMBED_LOCALE` (`en` or `zh`) or set a specific model with `EMBED_MODEL`.
+- By default the repo falls back to a deterministic local stub embedder when BGE runtime is not available.
+- The local `VectorStore` uses FAISS for efficient similarity search if `faiss` is installed; otherwise it falls back to an in-memory NumPy brute-force search. To enable FAISS install it in your environment (for example `pip install faiss-cpu`).
+
+---
+
 ## Checkpointing
 
 During graph construction the skill writes a lightweight LangGraph checkpoint that records node names and edges for inspection. The file is written to:

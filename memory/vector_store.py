@@ -24,7 +24,7 @@ class VectorStore:
     def add_documents(self, docs: List[Dict[str, Any]]):
         """Add documents: each doc must have `id` and `text` and optional `meta`."""
         texts = [d["text"] for d in docs]
-        vecs = self.embedder.embed(texts)
+        vecs = self.embedder.embed_documents(texts)
 
         if self._vectors is None:
             self._vectors = vecs

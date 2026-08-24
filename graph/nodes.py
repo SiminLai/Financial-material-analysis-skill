@@ -275,6 +275,7 @@ def create_report_node(report_tool, evidence_store=None, evidence_builder=None):
             "document": document,
             "metrics": metrics,
             "risk": risk,
+            "reflection": state.get("reflection")
         }
 
         browser_result = state.get("browser_result")
@@ -412,6 +413,7 @@ def create_impute_node(evidence_store, evidence_builder=None):
 def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=None, evidence_store=None, summarizer=None, memory_manager=None):
 
     def reflection_node(state):
+        print(">>> rag_tool:", rag_tool)
 
         # build a simple query from metrics and document
         metrics = state.get('metrics') or {}
@@ -431,18 +433,28 @@ def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=No
         rag_ids = []
 
         # retrieve via rag_tool
+        
         if rag_tool and query:
             try:
+                print(">>> RAG QUERY:")
+                print(query)
+
                 items = rag_tool.retrieve(query, k=5)
-                # persist rag items to evidence store if builder present
+
+                print(f">>> RAG RETRIEVED: {len(items)}")
+
                 if evidence_builder:
                     rids = evidence_builder.from_rag_items(items)
+                    print(f">>> RAG EVIDENCE IDS: {rids}")
+
                     rag_ids.extend(rids)
                     external_override_ids.extend(rids)
+
                 else:
-                    # if no builder, include raw items
                     external_override_ids.extend(items)
-            except Exception:
+
+            except Exception as e:
+                print(">>> RAG ERROR:", repr(e))
                 items = []
 
             # produce compressed summary of RAG items and persist summary evidence

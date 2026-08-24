@@ -153,6 +153,14 @@ python main.py
 
 ---
 
+### 向量与嵌入说明
+
+- 本项目支持基于 BGE 的嵌入（位于 `providers/embedding_provider_bge.py`）。可通过环境变量 `EMBED_LOCALE` 指定 `en` 或 `zh`，或通过 `EMBED_MODEL` 指定具体模型。 
+- 当运行环境不可用 BGE 依赖时，系统会回退到本地确定性嵌入 stub 以便离线演示。
+- 本地 `VectorStore` 在检测到 `faiss` 安装时优先使用 FAISS 进行高效相似度检索；否则使用内存中的 NumPy 暴力检索。若需启用 FAISS，请在环境中安装（例如 `pip install faiss-cpu`）。
+
+---
+
 ## 检查点（Checkpoint）
 
 在图构建阶段，系统会写入一个轻量级的 LangGraph 检查点文件（记录节点名称和边），用于调试和检查：

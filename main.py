@@ -20,7 +20,7 @@ from graph.financial_graph import create_finance_graph
 from mcp_local.manager import MCPManager
 from memory.manager import MemoryManager
 from tools.rag_tool import RAGTool
-from providers.embedding_provider import EmbeddingProvider
+from providers.embedding_provider_bge import BGEEmbeddingProvider
 from memory.vector_store import VectorStore
 from reflection.reflection_engine import ReflectionEngine
 from reflection.analyzers.missing import MissingFieldsEvaluator
@@ -91,8 +91,15 @@ async def main():
 
         # instantiate simple local memory + vector store + RAG adapter
         memory_manager = MemoryManager()
-        embedder = EmbeddingProvider(dim=128)
-        vector_store = VectorStore(embedding_provider=embedder, dim=128)
+        # allow selecting embedding locale via env var EMBED_LOCALE (en/zh) or explicit MODEL path
+        embed_locale = os.getenv("EMBED_LOCALE", "en")
+        embed_model = os.getenv("EMBED_MODEL", None)
+        if embed_model:
+            embedder = BGEEmbeddingProvider(model_path=embed_model, use_fp16=True)
+        else:
+            embedder = BGEEmbeddingProvider(locale=embed_locale, use_fp16=True)
+
+        vector_store = VectorStore(embedding_provider=embedder, dim=embedder.dim)
         rag_tool = RAGTool(memory_manager=memory_manager, vector_store=vector_store)
 
         graph = create_finance_graph(
@@ -102,6 +109,8 @@ async def main():
             browser_tool=search_tool,
             report_tool=report_tool,
             llm_provider=llm_provider,
+            embedder=embedder,
+            rag_tool=rag_tool,  
         )
 
         # If the graph saved a LangGraph checkpoint during construction, print it for debugging
@@ -119,7 +128,43 @@ async def main():
         init_state = {"input_file": r"examples\Q4'25+EarningsRelease+FINAL+v1.pdf"}
         if thread_id:
             init_state["thread_id"] = thread_id
+        # ================================
+        # Pre-index document for RAG
+        # ================================
+        from utils.text_chunker import chunk_text
 
+        print("\n===== BUILD INITIAL RAG INDEX =====")
+
+        document = parser_tool.invoke({
+            "file_path": init_state["input_file"]
+        })
+
+        text = document.get("text", "")
+
+        chunks = chunk_text(
+            text,
+            chunk_size=1000,
+            overlap=300
+        )
+
+        docs = []
+
+        for i, c in enumerate(chunks):
+            docs.append({
+                "id": f"pdf_chunk_{i}",
+                "text": c,
+                "meta": {
+                    "source": "pdf",
+                    "chunk_index": i
+                }
+            })
+
+        if docs:
+            vector_store.add_documents(docs)
+
+        print(
+            f"Indexed {len(docs)} PDF chunks into RAG"
+        )
         result = await graph.ainvoke(init_state)
 
         print(result["report"])

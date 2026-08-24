@@ -1,0 +1,108 @@
+[
+  {
+    "id": "2182cc18-99ee-4e0a-bcb8-9e0d12aab313",
+    "timestamp": 1787548094.2681828,
+    "type": "report",
+    "content": {
+      "summary": "Intel reported full-year 2025 revenue of $52,853 million, a GAAP net loss attributable to Intel of -$267 million, and operating cash flow of $9,697 million. Q4 2025 GAAP diluted EPS was -$0.12, while non-GAAP diluted EPS was $0.15. The risk engine assigns a HIGH risk score of 0.9. External evidence indicates severe financial stress and downside risks, including negative free cash flow, high debt relative to liquid assets, a Fitch downgrade, foundry operating losses, AI market share erosion, and export-control exposure.",
+      "risk_assessment": "HIGH risk (0.9). The deterministic flags include MISSING_DEBT_RATIO, LOSS_MAKING, LOW_PROFIT_MARGIN, NEGATIVE_MARGIN, and PROFIT_CASH_MISMATCH. The company is loss-making at the net level, with weak profitability and a cash-flow/earnings mismatch. The missing debt ratio limits full leverage assessment. External evidence corroborates a severe financial stress profile, including negative free cash flow, debt exceeding liquid assets by ~$51B, a Fitch downgrade to BBB with negative outlook, persistent foundry operating losses, AI market share erosion, and U.S. export-control risks.",
+      "recommendation": "SELL",
+      "key_points": [
+        {
+          "claim": "Full-year 2025 revenue was $52,853 million.",
+          "evidence": {
+            "metric": "revenue",
+            "value": "$52,853 million",
+            "source": "Consolidated Statements of Operations"
+          }
+        },
+        {
+          "claim": "Full-year 2025 GAAP net loss attributable to Intel was -$267 million, indicating a loss-making position at the net level.",
+          "evidence": {
+            "metric": "net_profit",
+            "value": "-$267 million",
+            "source": "Consolidated Statements of Operations"
+          }
+        },
+        {
+          "claim": "Full-year 2025 operating cash flow was $9,697 million; the positive cash flow against a GAAP net loss is consistent with the PROFIT_CASH_MISMATCH risk flag.",
+          "evidence": {
+            "metric": "cash_flow",
+            "value": "$9,697 million",
+            "source": "Consolidated Statements of Cash Flows"
+          }
+        },
+        {
+          "claim": "The risk engine assigns a HIGH risk score of 0.9 with flags including MISSING_DEBT_RATIO, LOSS_MAKING, LOW_PROFIT_MARGIN, NEGATIVE_MARGIN, and PROFIT_CASH_MISMATCH.",
+          "evidence": {
+            "metric": "risk_score",
+            "value": "0.9 (HIGH)",
+            "source": "RISK section"
+          }
+        },
+        {
+          "claim": "Q4 2025 GAAP diluted EPS attributable to Intel was -$0.12, while non-GAAP diluted EPS was $0.15.",
+          "evidence": {
+            "metric": "EPS attributable to Intel—diluted",
+            "value": "GAAP $(0.12); Non-GAAP $0.15",
+            "source": "Q4 2025 Financial Results table"
+          }
+        },
+        {
+          "claim": "External evidence indicates severe financial stress, including negative free cash flow, debt load exceeding liquid assets by ~$51B, Fitch downgrade to BBB with negative outlook, persistent foundry operating losses, AI market share erosion, and U.S. export controls on China.",
+          "evidence": {
+            "metric": "external_evidence_summary",
+            "value": "Severe financial stress: negative earnings, thin operating margins, negative free cash flow, debt load exceeding liquid assets by ~$51B, Fitch downgrade to BBB with negative outlook, foundry operating losses, AI market share erosion, and export controls.",
+            "source": "EXTERNAL_WEB_EVIDENCE"
+          },
+          "evidence_ids": [
+            "500184d0-d701-4e78-aa5e-53c663e99fc0",
+            "9feb46fd-1a14-4b45-8bf5-0c42ad642a7b"
+          ]
+        }
+      ],
+      "external_evidence": {
+        "source": "external",
+        "available": true,
+        "description": "External information retrieved from web sources or RAG summaries",
+        "data": {
+          "browser_result": {
+            "summary": "Intel faces severe financial stress: negative earnings, thin operating margins, negative free cash flow, and a debt load exceeding liquid assets by ~$51B, while Fitch has downgraded its IDR to BBB with a negative outlook. Key risks include persistent foundry operating losses, AI market share erosion, and U.S. export controls on China. Actionable next steps are to monitor quarterly foundry margin progress, cash flow and debt repayment milestones, and any updates on export license impacts. A gap is the lack of segment-level profitability detail in the summaries, so request the 10-Q’s foundry and Mobileye segment disclosures to model turnaround viability.",
+            "source": "mcp",
+            "evidence_ids": [
+              "500184d0-d701-4e78-aa5e-53c663e99fc0",
+              "9feb46fd-1a14-4b45-8bf5-0c42ad642a7b"
+            ]
+          },
+          "external_summary": "Intel faces severe financial stress: negative earnings, thin operating margins, negative free cash flow, and a debt load exceeding liquid assets by ~$51B, while Fitch has downgraded its IDR to BBB with a negative outlook. Key risks include persistent foundry operating losses, AI market share erosion, and U.S. export controls on China. Actionable next steps are to monitor quarterly foundry margin progress, cash flow and debt repayment milestones, and any updates on export license impacts. A gap is the lack of segment-level profitability detail in the summaries, so request the 10-Q’s foundry and Mobileye segment disclosures to model turnaround viability.",
+          "external_evidence_ids": [
+            "500184d0-d701-4e78-aa5e-53c663e99fc0",
+            "9feb46fd-1a14-4b45-8bf5-0c42ad642a7b"
+          ],
+          "external_citations": [
+            {
+              "id": "500184d0-d701-4e78-aa5e-53c663e99fc0",
+              "cite": "Evidence 500184d0-d701-4e78-aa5e-53c663e99fc0 (src=mcp.summary)",
+              "snippet": "Intel faces severe financial stress: negative earnings, thin operating margins, negative free cash flow, and a debt load exceeding liquid assets by ~$51B, while Fitch has downgraded its IDR to BBB with a negative outlook. Key risks include persistent foundry operating losses, AI market share erosion"
+            },
+            {
+              "id": "9feb46fd-1a14-4b45-8bf5-0c42ad642a7b",
+              "cite": "Evidence 9feb46fd-1a14-4b45-8bf5-0c42ad642a7b (src=mcp.raw)",
+              "snippet": "Detailed Results:\n\nTitle: The Risk Factors to Watch Out For in Intel Stock | Trefis\nID: 0768ac-00\nURL: https://www.trefis.com/stock/intc/articles/599087/the-risk-factors-to-watch-out-for-in-intel-stock/2026-05-12\nContent: |  | INTC | S&P Median |\n --- \n| Sector | Information Technology | – |\n| Indus"
+            }
+          ]
+        }
+      },
+      "meta": {
+        "engine": "report_generator",
+        "risk_score": 0.9,
+        "validation": "strict",
+        "external_citation_included": true
+      }
+    },
+    "metadata": {
+      "source": "pipeline",
+      "evidence_ids": []
+    }
+  }
+]

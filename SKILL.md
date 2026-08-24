@@ -1,9 +1,52 @@
----
 name: financial-report-analysis-skill
-description: Analyze PDF or XLSX financial documents, including annual and quarterly reports, earnings releases, financial statements, and investor materials. Extract strictly grounded company, revenue, net-profit, debt-ratio, and operating-cash-flow metrics; score deterministic financial risks; and generate evidence-aware JSON reports. Use when working with this repository to run, extend, debug, or evaluate its LangGraph-based financial-document analysis pipeline, including its optional DeepSeek and Tavily MCP integrations.
+description: "Parse financial PDF/XLSX, extract normalized metrics, run deterministic risk scoring, and produce evidence-cited JSON reports. Optional RAG/MCP integration provides external context without overriding parsed facts. Designed for auditable, evidence-first analyses of financial filings."
+version: 1.0.5
+author: LLLLLLL
+keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection]
+inputs:
+	- file: pdf|xlsx
+	- expect: financial statements, earnings releases, investor materials
+outputs:
+	- report: json (fields: summary, risk_assessment, recommendation, key_points, external_evidence, meta)
+requirements:
+	- langgraph (optional)
+	- pdfplumber
+	- PyPDF2
+	- openpyxl
+	- DEEPSEEK_API_KEY (optional for LLM-backed summarization)
+cost: low
+safe_to_run: true
+selector:
+	- use_if: "document_type in [annual_report, quarterly_report, earnings_release] or need_evidence_traceability == true"
+	- avoid_if: "only_plain_text_extraction_needed or no_financial_metrics_present"
 ---
 
 # Financial Report Analysis Skill
+
+## What it does
+
+- End-to-end LangGraph workflow that parses local financial documents (`.pdf`, `.xlsx`), extracts normalized metrics (`company_name`, `revenue`, `net_profit`, `debt_ratio`, `cash_flow`), scores deterministic financial risks, and produces evidence-aware structured JSON reports.
+- Persists all important artifacts as `Evidence` (with `evidence_id`) so external RAG results and internal parsing/imputation steps are traceable and citable inside final reports.
+- Supports optional RAG/MCP integration (Tavily/DeepSeek) for external context; compresses and summarizes retrieved items and injects them into the pipeline without overwriting core deterministic metrics.
+- Provides reflection/evaluation hooks (completeness, consistency, missing-fields) and an imputer for computed metrics (e.g., debt ratio) to improve robustness.
+
+## When to use
+
+- Automating structured extraction and analysis of annual/quarterly reports, earnings releases, and investor materials where reproducible traceability of evidence is required.
+- Augmenting deterministic rule-based risk scoring with contextual external evidence (RAG) while keeping decisions auditable and grounded in parsed values.
+- Rapid prototyping of LangGraph + RAG + LLM pipelines where you need clear separation between parsed facts, inferred values, external evidence, and LLM explanations.
+
+## Important capabilities
+
+- Document parsing: PDF and Excel table/text extraction using `pdfplumber`/`PyPDF2` and `openpyxl` providers.
+- Structured metric extraction and strict validation (Pydantic-backed schemas and rule checks).
+- Deterministic risk engine with explicit rules and enforced recommendation logic (`BUY`/`HOLD`/`SELL`).
+- Evidence-first design: `EvidenceStore` + `EvidenceBuilder` persist parsed text, table cells, RAG items, imputer outputs, and risk flags with `evidence_id` for citation in reports.
+- RAG and MCP adapters: optional external search via Tavily MCP and DeepSeek-compatible LLM integration; retrieval is summarized and linked into reports but cannot override core metrics.
+- Reflection & evaluation: modular evaluators (missing/completeness/consistency) and conflict-resolution hooks to surface issues before final reporting.
+- Imputation: best-effort metric imputation (e.g., debt ratio) from existing parsed evidence, with imputation evidence persisted.
+- Reproducible graph construction: LangGraph-based node graph with native checkpointer integration when available; fallback components for environments without LangGraph.
+- Production readiness features: LLM stub/production modes, retry/backoff for remote LLMs, safe release cleanup script, and guidance for GitHub publishing.
 
 ## Operating model
 
