@@ -167,13 +167,6 @@ def create_finance_graph(
         risk_node
     )
 
-    # insert reflection node after risk evaluation
-    builder.add_node(
-        "reflect",
-        reflection_node
-    )
-
-
     # 4. Register optional browser node
 
     if browser_tool is not None:
@@ -201,6 +194,13 @@ def create_finance_graph(
     builder.add_node(
         "report",
         report_node
+    )
+
+    # register reflection after report; this also aligns fallback executor
+    # behavior (which runs nodes in registration order)
+    builder.add_node(
+        "reflect",
+        reflection_node
     )
 
 

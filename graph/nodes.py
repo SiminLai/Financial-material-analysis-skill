@@ -28,6 +28,7 @@ def create_parser_node(parser_tool, evidence_builder=None):
                 if text:
                     doc_eid = evidence_builder.from_text(text[:2000], source=file_path, page=None)
                     state.setdefault('evidence_ids', []).append(doc_eid)
+                    state.setdefault('internal_evidence_ids', []).append(doc_eid)
 
                 tables = document.get('tables') or []
                 # tables expected as list of dicts with 'page' and 'rows'
@@ -42,6 +43,7 @@ def create_parser_node(parser_tool, evidence_builder=None):
                 if table_items:
                     tids = evidence_builder.from_table_items(table_items)
                     state.setdefault('evidence_ids', []).extend(tids)
+                    state.setdefault('internal_evidence_ids', []).extend(tids)
             except Exception:
                 pass
 
@@ -72,6 +74,17 @@ def create_metric_node(metric_tool, evidence_store=None, evidence_builder=None):
                         meta = {'origin': 'imputer', 'method': 'debt_ratio_from_tables'}
                         eid = evidence_builder.from_text(f"computed debt_ratio={metrics.get('debt_ratio')}", source='imputer', meta=meta)
                         state.setdefault('evidence_ids', []).append(eid)
+                        state.setdefault('internal_evidence_ids', []).append(eid)
+        except Exception:
+            pass
+
+        # keep missing debt_ratio explicitly marked as UNKNOWN instead of
+        # allowing any implicit defaulting behavior.
+        try:
+            if metrics.get('debt_ratio') is None:
+                mmeta = metrics.get('meta') if isinstance(metrics.get('meta'), dict) else {}
+                mmeta['debt_ratio_status'] = 'UNKNOWN'
+                metrics['meta'] = mmeta
         except Exception:
             pass
 
@@ -104,6 +117,7 @@ def create_risk_node(risk_tool, evidence_builder=None):
                     # attach meta to the stored evidence (store.add already saved basic content)
                     # we also append the evidence id to state for later use
                     state.setdefault('evidence_ids', []).append(eid)
+                    state.setdefault('internal_evidence_ids', []).append(eid)
         except Exception:
             pass
 
@@ -232,7 +246,7 @@ def create_browser_node(browser_tool, evidence_builder=None, summarizer=None, me
                     # reuse decision if available
                     if 'decision' not in locals() and memory_policy:
                         decision = memory_policy.decide(raw_text=raw_text, summary=compressed, metadata={'risk_flags': state.get('risk', {}).get('risk_flags', []), 'risk_score': state.get('risk', {}).get('risk_score')})
-                    existing_eids = list(state.get('evidence_ids') or [])
+                    existing_eids = list(state.get('external_evidence_ids') or [])
                     meta_eids = list(set(existing_eids + stored_eids))
                     if decision.get('store_raw') and raw_text:
                         memory_manager.add(content=raw_text, type='external_raw', metadata={'source':'mcp', 'evidence_ids': meta_eids})
@@ -244,7 +258,8 @@ def create_browser_node(browser_tool, evidence_builder=None, summarizer=None, me
             # attach stored evidence ids to state
             if stored_eids:
                 state.setdefault('evidence_ids', []).extend(stored_eids)
-                browser_obj['evidence_ids'] = state.get('evidence_ids')
+                state.setdefault('external_evidence_ids', []).extend(stored_eids)
+                browser_obj['evidence_ids'] = list(state.get('external_evidence_ids') or [])
         except Exception:
             pass
 
@@ -301,8 +316,8 @@ def create_report_node(report_tool, evidence_store=None, evidence_builder=None):
             if isinstance(br, dict) and br.get('summary'):
                 tool_input['external_summary'] = br.get('summary')
 
-        # gather evidence ids from state and browser_result and dedupe
-        evidence_ids = list(state.get('evidence_ids') or [])
+        # gather EXTERNAL evidence ids from state and browser_result and dedupe
+        evidence_ids = list(state.get('external_evidence_ids') or [])
         try:
             br = state.get('browser_result') or {}
             if isinstance(br, dict) and br.get('evidence_ids'):
@@ -392,7 +407,7 @@ def create_impute_node(evidence_store, evidence_builder=None):
         metrics = state.get('metrics') or {}
         try:
             updated = compute_debt_ratio_from_evidence(evidence_store, metrics)
-            # if debt_ratio was computed, persist as evidence and update state
+            # if debt_ratio was computed, persist as internal evidence and update state
             if updated.get('debt_ratio') is not None and metrics.get('debt_ratio') is None:
                 state['metrics'] = updated
                 try:
@@ -400,6 +415,7 @@ def create_impute_node(evidence_store, evidence_builder=None):
                         meta = {'origin': 'imputer', 'method': 'debt_ratio_from_tables'}
                         eid = evidence_builder.from_text(f"computed debt_ratio={updated.get('debt_ratio')}", source='imputer', meta=meta)
                         state.setdefault('evidence_ids', []).append(eid)
+                        state.setdefault('internal_evidence_ids', []).append(eid)
                 except Exception:
                     pass
         except Exception:
@@ -413,48 +429,71 @@ def create_impute_node(evidence_store, evidence_builder=None):
 def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=None, evidence_store=None, summarizer=None, memory_manager=None):
 
     def reflection_node(state):
-        print(">>> rag_tool:", rag_tool)
-
-        # build a simple query from metrics and document
+        # build a semantic query (avoid dumping raw metrics/meta JSON)
         metrics = state.get('metrics') or {}
         document = state.get('document') or {}
+        risk = state.get('risk') or {}
+        report = state.get('report') or {}
 
-        q_parts = []
-        if isinstance(metrics, dict):
-            q_parts.append(' '.join([f"{k}:{v}" for k, v in metrics.items() if v is not None]))
-        if document:
-            title = document.get('meta', {}).get('title') or ''
-            q_parts.append(title)
+        q_parts = ["financial risk validation"]
+        company = metrics.get('company_name')
+        if company:
+            q_parts.append(f"company {company}")
+
+        title = document.get('meta', {}).get('title') if isinstance(document, dict) else None
+        if title:
+            q_parts.append(str(title))
+
+        flags = risk.get('risk_flags') or []
+        if flags:
+            q_parts.append("risk flags " + ", ".join([str(f) for f in flags[:6]]))
+
+        missing = (metrics.get('meta') or {}).get('missing_fields') if isinstance(metrics.get('meta'), dict) else None
+        if missing:
+            q_parts.append("missing metrics " + ", ".join([str(m) for m in missing[:6]]))
+
+        report_summary = report.get('summary') if isinstance(report, dict) else None
+        if report_summary:
+            q_parts.append(str(report_summary)[:300])
 
         query = ' '.join([p for p in q_parts if p]) or None
 
-        external_override_ids = []
+        external_override_ids = list(state.get('external_evidence_ids') or [])
         rag_summary = None
         rag_ids = []
 
+        def _is_external_source(src):
+            s = (src or '').lower()
+            return any(k in s for k in ['mcp', 'tavily', 'web', 'external', 'news', 'internet'])
+
         # retrieve via rag_tool
-        
         if rag_tool and query:
             try:
-                print(">>> RAG QUERY:")
-                print(query)
-
                 items = rag_tool.retrieve(query, k=5)
-
-                print(f">>> RAG RETRIEVED: {len(items)}")
 
                 if evidence_builder:
                     rids = evidence_builder.from_rag_items(items)
-                    print(f">>> RAG EVIDENCE IDS: {rids}")
 
                     rag_ids.extend(rids)
-                    external_override_ids.extend(rids)
+                    for idx, rid in enumerate(rids):
+                        src = None
+                        try:
+                            src = ((items[idx] or {}).get('meta') or {}).get('source')
+                        except Exception:
+                            src = None
+
+                        state.setdefault('evidence_ids', []).append(rid)
+
+                        if _is_external_source(src):
+                            state.setdefault('external_evidence_ids', []).append(rid)
+                            external_override_ids.append(rid)
+                        else:
+                            state.setdefault('internal_evidence_ids', []).append(rid)
 
                 else:
                     external_override_ids.extend(items)
 
-            except Exception as e:
-                print(">>> RAG ERROR:", repr(e))
+            except Exception:
                 items = []
 
             # produce compressed summary of RAG items and persist summary evidence
@@ -481,14 +520,11 @@ def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=No
                             try:
                                 sid = evidence_builder.from_text(rag_summary, source='rag.summary', meta={'origin':'rag','type':'summary'})
                                 state.setdefault('evidence_ids', []).append(sid)
+                                state.setdefault('external_evidence_ids', []).append(sid)
                             except Exception:
                                 pass
             except Exception:
                 pass
-
-        # include any existing evidence ids from parsing
-        existing = state.get('evidence_ids') or []
-        external_override_ids.extend(existing)
 
         # combine browser_result summary (if present) with rag_summary to form a single external_summary
         try:
@@ -510,6 +546,7 @@ def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=No
                     try:
                         cid = evidence_builder.from_text(combined, source='external.combined_summary', meta={'origin':'combined','type':'summary'})
                         state.setdefault('evidence_ids', []).append(cid)
+                        state.setdefault('external_evidence_ids', []).append(cid)
                     except Exception:
                         pass
                 # also add to memory with linked evidence ids
@@ -524,8 +561,43 @@ def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=No
 
         # run reflection
         try:
-            out = reflection_engine.reflect(state, query=query, use_external=True, external_override=external_override_ids)
+            override = external_override_ids if external_override_ids else None
+            out = reflection_engine.reflect(state, query=query, use_external=True, external_override=override)
             state['reflection'] = out
+
+            # expose reflection as a formal part of final report output
+            try:
+                eval_map = {}
+                for item in out.get('evaluation_results') or []:
+                    name = (item or {}).get('name')
+                    if name:
+                        eval_map[name] = item
+
+                def _status(name, threshold=0.8):
+                    score = ((eval_map.get(name) or {}).get('score'))
+                    if isinstance(score, (int, float)):
+                        return 'PASS' if float(score) >= threshold else 'FAIL'
+                    return 'UNKNOWN'
+
+                conflicts = ((out.get('conflict_resolution') or {}).get('conflicts') or [])
+                conflict_count = len(conflicts)
+                overall = out.get('overall_score')
+                needs_review = conflict_count > 0 or (isinstance(overall, (int, float)) and float(overall) < 0.8)
+
+                reflection_summary = {
+                    'overall_score': overall,
+                    'consistency': _status('consistency'),
+                    'completeness': _status('completeness'),
+                    'conflict_count': conflict_count,
+                    'needs_review': bool(needs_review),
+                }
+
+                state['reflection_summary'] = reflection_summary
+
+                if isinstance(state.get('report'), dict):
+                    state['report']['reflection'] = reflection_summary
+            except Exception:
+                pass
         except Exception:
             state['reflection'] = None
 

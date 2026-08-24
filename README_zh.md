@@ -1,6 +1,6 @@
 # Financial Report Analysis Skill
 
-一个基于 LangGraph 构建的金融报告分析 Skill，可自动解析和分析财务文档，支持 PDF 与 XLSX 文件，提取关键财务指标，进行可解释的风险分析，并生成结构化财务分析报告。
+一个基于 LangGraph 构建的“证据优先”金融分析 Skill：支持 PDF/XLSX 文档解析，提取可落地的结构化指标，执行确定性风险评分，生成结构化报告，并在报告后执行 reflection 校验。
 
 支持可选的 MCP 外部搜索能力，默认关闭。
 
@@ -12,6 +12,7 @@
 - 自动提取收入、净利润、资产负债率、现金流等关键财务指标
 - 提供可解释的财务风险分析
 - 自动生成结构化财务分析报告
+- 报告生成后执行 reflection 校验（完整性/一致性/缺失字段/冲突检查）
 - 支持统一的多格式文档解析
 - 基于 LangGraph 构建工作流
 - 支持可选 MCP 外部搜索（默认关闭）
@@ -132,6 +133,7 @@ python main.py
 
 - 不开启外部搜索
 - 仅基于本地文档完成分析
+- 报告输出后会打印 reflection 校验摘要
 
 ---
 
@@ -151,6 +153,18 @@ python main.py
 - 所有 API Key 建议通过环境变量配置。
 - 外部搜索功能默认关闭，需要用户主动开启。
 
+### 执行边界
+
+- 财务指标与 `risk_score` 视为内部真值（ground truth）。
+- 外部证据（RAG/MCP/Web）仅作辅助，不可覆盖核心数值指标。
+- 最终 `BUY/HOLD/SELL` 推荐由代码规则强制约束，不由 LLM 自由决定。
+
+### 当前流程
+
+```text
+PDF/XLSX -> parser -> 指标抽取 -> 风险评分 -> [可选 browser/MCP] -> report -> reflection 校验
+```
+
 ---
 
 ### 向量与嵌入说明
@@ -166,7 +180,7 @@ python main.py
 在图构建阶段，系统会写入一个轻量级的 LangGraph 检查点文件（记录节点名称和边），用于调试和检查：
 
 ```
-workspace/cache/langgraph_checkpoint.json
+workspace/cache/langgraph_checkpoint.sqlite
 ```
 
 该文件仅用于检查和可重复性验证，不会序列化函数调用体。

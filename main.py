@@ -169,6 +169,26 @@ async def main():
 
         print(result["report"])
 
+        # print concise post-report reflection validation summary
+        try:
+            reflection = result.get('reflection') if isinstance(result, dict) else None
+            if reflection:
+                evals = reflection.get('evaluation_results') or []
+                conflicts = (reflection.get('conflict_resolution') or {}).get('conflicts') or []
+                overall = reflection.get('overall_score')
+
+                print("\nReflection validation summary:")
+                print(f"- overall_score: {overall}")
+                print(f"- evaluator_count: {len(evals)}")
+                print(f"- conflict_count: {len(conflicts)}")
+
+                # show the first few internal feedback messages for quick diagnosis
+                feedback = reflection.get('internal_feedback') or []
+                for msg in feedback[:3]:
+                    print(f"- feedback: {msg}")
+        except Exception as e:
+            print('Could not print reflection validation summary:', e)
+
         # print RAG/external chunks used by the graph (if any)
         try:
             reflection = result.get('reflection') if isinstance(result, dict) else None

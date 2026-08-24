@@ -1,4 +1,5 @@
 import numpy as np
+import hashlib
 from typing import List
 
 try:
@@ -56,8 +57,22 @@ class BGEEmbeddingProvider:
         else:
             print(">>> Using fallback embedding")
 
-            from providers.embedding_provider import EmbeddingProvider as StubEmbed
-            self._stub = StubEmbed(dim=128)
+            class _LocalStubEmbedder:
+                def __init__(self, dim: int = 128):
+                    self.dim = dim
+
+                def embed(self, texts: List[str]) -> np.ndarray:
+                    out = []
+                    for t in texts:
+                        h = hashlib.md5((t or "").encode("utf-8")).digest()
+                        reps = (self.dim + len(h) - 1) // len(h)
+                        big = (h * reps)[: self.dim]
+                        vec = np.frombuffer(big, dtype=np.uint8).astype("float32")
+                        norm = np.linalg.norm(vec)
+                        out.append(vec if norm == 0 else vec / norm)
+                    return np.vstack(out)
+
+            self._stub = _LocalStubEmbedder(dim=128)
             self.dim = getattr(self._stub, 'dim', 128)
 
 

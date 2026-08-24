@@ -347,12 +347,12 @@ class ReportGeneratorTool(BaseTool):
         # included citations or a summary derived from that evidence. Otherwise
         # raise an error so the pipeline does not silently drop external proof.
         provided_external = bool(browser_result or external_summary or external_evidence_ids or external_citations)
+        has_evidence_ids = False
 
         if provided_external:
             # Check for external_summary presence in report data or evidence_ids in key_points
             report_external_summary = external_evidence.get("data", {}).get("external_summary") or external_summary
 
-            has_evidence_ids = False
             for kp in report.get("key_points", []):
                 ev = kp.get("evidence") or {}
                 if ev.get("evidence_ids"):
@@ -411,19 +411,19 @@ class ReportGeneratorTool(BaseTool):
 
 
         profit = metrics.get(
-            "net_profit",
-            0
+            "net_profit"
         )
 
 
         cash = metrics.get(
-            "cash_flow",
-            0
+            "cash_flow"
         )
 
 
         if (
             score < 0.3
+            and profit is not None
+            and cash is not None
             and profit > 0
             and cash > 0
         ):

@@ -33,21 +33,34 @@ def compute_debt_ratio_from_evidence(evidence_store, metrics: Dict[str, Any]) ->
     assets = None
     debt = None
 
+    # use stricter keywords to avoid implicit/ambiguous matches that can
+    # incorrectly collapse to debt_ratio ~= 1.0.
+    asset_keywords = ['total assets', 'total asset']
+    debt_keywords = ['total liabilities', 'total debt']
+
     # search through all evidence items
     for ev in evidence_store._store.values():
         content = (ev.get('content') or '').lower()
-        if any(k in content for k in ['total assets', 'totalasset', 'totalassets', 'assets']):
+        if any(k in content for k in asset_keywords):
             val = _extract_number(content)
             if val is not None:
                 assets = val
-        if any(k in content for k in ['total liabilities', 'total debt', 'liabilities', 'debt']):
+        if any(k in content for k in debt_keywords):
             val = _extract_number(content)
             if val is not None:
                 debt = val
         if assets is not None and debt is not None:
             break
 
+    # only impute when ratio is plausible; otherwise keep missing as missing
     if assets and debt and assets != 0:
         ratio = debt / assets
-        existing['debt_ratio'] = float(ratio)
+        if 0 <= ratio <= 2.0:
+            existing['debt_ratio'] = float(ratio)
+
+    # explicit missing marker for downstream logic/debugging
+    if existing.get('debt_ratio') is None:
+        meta = existing.get('meta') if isinstance(existing.get('meta'), dict) else {}
+        meta['debt_ratio_status'] = 'UNKNOWN'
+        existing['meta'] = meta
     return existing

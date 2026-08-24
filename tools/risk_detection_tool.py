@@ -100,9 +100,17 @@ class RiskDetectionTool(BaseTool):
             score += 0.2
             flags.append("ELEVATED_LEVERAGE")
 
-        if cash_flow is not None and cash_flow < 5000:
-            score += 0.3
-            flags.append("LOW_CASH_FLOW")
+        # unit-sensitive rule: avoid absolute thresholds (e.g. 5000) and
+        # use cash-flow-to-revenue ratio to reduce false positives across
+        # different reporting units (USD vs millions USD).
+        try:
+            if revenue is not None and revenue != 0 and cash_flow is not None:
+                c2r = cash_flow / max(abs(revenue), 1.0)
+                if c2r < 0.01:
+                    score += 0.3
+                    flags.append("LOW_CASH_FLOW")
+        except Exception:
+            pass
 
         if net_profit is not None and net_profit < 0:
             score += 0.3
@@ -147,15 +155,8 @@ class RiskDetectionTool(BaseTool):
                 score += 0.1
                 flags.append("SUSPICIOUS_SMALL_REVENUE")
 
-        # cash flow to revenue sanity check
-        try:
-            if revenue and cash_flow is not None:
-                c2r = cash_flow / max(1.0, revenue)
-                if c2r < 0.01:
-                    score += 0.1
-                    flags.append("LOW_CASH_FLOW_TO_REVENUE")
-        except Exception:
-            pass
+        # note: removed extra LOW_CASH_FLOW_TO_REVENUE penalty to avoid
+        # double-counting after making LOW_CASH_FLOW ratio-based.
 
         return min(score, 1.0), flags
 

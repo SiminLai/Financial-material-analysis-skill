@@ -53,8 +53,14 @@ def build_edges(builder, enable_browser: bool):
         )
 
 
-
     builder.add_edge(
         "report",
+        "reflect"
+    )
+
+
+
+    builder.add_edge(
+        "reflect",
         END
     )

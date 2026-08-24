@@ -1,8 +1,6 @@
 # Financial Report Analysis Skill
 
-A lightweight financial analysis skill built with LangGraph for parsing and analyzing financial documents. It supports both PDF and XLSX inputs, extracts structured financial metrics, performs explainable risk analysis, and generates comprehensive financial reports.
-
-Optional MCP-based external evidence retrieval is supported and disabled by default.
+An evidence-first financial analysis skill built with LangGraph for PDF/XLSX documents. It extracts grounded metrics, computes deterministic risk scores, generates structured reports, and then runs reflection-based post-report validation. RAG/MCP context is optional and treated as supporting evidence only.
 
 ---
 
@@ -12,6 +10,7 @@ Optional MCP-based external evidence retrieval is supported and disabled by defa
 - Extract key financial metrics such as revenue, net profit, debt ratio, and cash flow
 - Perform explainable financial risk analysis
 - Generate structured financial analysis reports
+- Run post-report reflection validation (completeness, consistency, missing fields, conflict checks)
 - Unified document parser for multi-format input
 - LangGraph-based workflow orchestration
 - Optional MCP external search support (disabled by default)
@@ -134,6 +133,7 @@ By default:
 
 - External search is disabled.
 - Financial reports are generated using local document analysis only.
+- Reflection validation summary is printed after report generation.
 
 ---
 
@@ -153,6 +153,18 @@ By default:
 - API keys should always be configured using environment variables.
 - Optional external search is disabled by default.
 
+### Execution Boundaries
+
+- Financial metrics and `risk_score` are treated as internal ground truth.
+- External evidence (RAG/MCP/Web) is supporting context and must not override core numeric metrics.
+- Recommendation is rule-enforced in code (`BUY`/`HOLD`/`SELL`) rather than left to unconstrained LLM output.
+
+### Current Workflow
+
+```text
+PDF/XLSX -> parser -> metric extraction -> risk scoring -> [browser/MCP if enabled] -> report -> reflection validation
+```
+
 ---
 
 ### Embeddings and Vector Store
@@ -168,7 +180,7 @@ By default:
 During graph construction the skill writes a lightweight LangGraph checkpoint that records node names and edges for inspection. The file is written to:
 
 ```
-workspace/cache/langgraph_checkpoint.json
+workspace/cache/langgraph_checkpoint.sqlite
 ```
 
 This checkpoint is intended for debugging and reproducibility inspection only; it does not serialize node callables.
