@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "tavily": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "tavily-mcp"
+      ]
+    }
+  }
+}
