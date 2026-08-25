@@ -84,3 +84,5 @@ dist/
 *.egg-info/
 
 scripts/
+
+test/
