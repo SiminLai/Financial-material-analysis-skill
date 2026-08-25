@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 import json
 import re
 
@@ -16,6 +16,7 @@ class MetricExtractorTool(BaseTool):
         "required_fields": ["text"],
         "field_types": {
             "text": str,
+            "table_regions": list,
         },
     }
 
@@ -73,6 +74,10 @@ class MetricExtractorTool(BaseTool):
 
         document = input_data
 
+        table_metrics, table_sources, table_evidence = self._extract_from_table_regions(
+            document.get("table_regions") or []
+        )
+
         prompt = self._build_prompt(
             document
         )
@@ -87,10 +92,21 @@ class MetricExtractorTool(BaseTool):
             raw_output
         )
 
+        # Prefer structured values extracted from table_regions over LLM text-only output.
+        for key, value in table_metrics.items():
+            if value is not None:
+                parsed[key] = value
+
 
         validated = self._validate(
             parsed
         )
+
+        validated_meta = validated.get("meta", {})
+        validated_meta["metric_sources"] = table_sources
+        validated_meta["table_evidence"] = table_evidence
+        validated_meta["source_priority"] = "table_regions_over_text"
+        validated["meta"] = validated_meta
 
 
         return validated
@@ -105,6 +121,10 @@ class MetricExtractorTool(BaseTool):
         self,
         document: Dict[str, Any]
     ) -> str:
+
+        cleaned_text = document.get("cleaned_text") or document.get("text") or ""
+        table_regions = document.get("table_regions") or []
+        table_regions_json = json.dumps(table_regions[:20], ensure_ascii=False)
 
 
         return f"""
@@ -121,9 +141,14 @@ CRITICAL RULES:
 - Return ONLY valid JSON.
 
 
-DOCUMENT:
+TABLE REGIONS (JSON, preserve as structured evidence):
 
-{document["text"]}
+{table_regions_json}
+
+
+DOCUMENT TEXT:
+
+{cleaned_text}
 
 
 Extract:
@@ -146,6 +171,77 @@ OUTPUT FORMAT:
 }}
 
 """
+
+    def _extract_from_table_regions(self, table_regions: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+        metrics = {
+            "company_name": None,
+            "revenue": None,
+            "net_profit": None,
+            "debt_ratio": None,
+            "cash_flow": None,
+        }
+        metric_sources: Dict[str, Dict[str, Any]] = {}
+        table_evidence: List[Dict[str, Any]] = []
+
+        label_map = {
+            "revenue": ["revenue", "sales", "营业收入", "营收", "收入"],
+            "net_profit": ["net profit", "net income", "profit", "净利润", "归母净利润"],
+            "cash_flow": ["cash flow", "operating cash flow", "经营活动现金流", "现金流"],
+            "debt_ratio": ["debt ratio", "资产负债率", "liability ratio"],
+        }
+
+        for region in table_regions:
+            page = region.get("page")
+            rows = region.get("rows") or []
+            for row in rows:
+                if not isinstance(row, list) or not row:
+                    continue
+
+                row_cells = [str(c or "").strip() for c in row]
+                row_label = row_cells[0].lower()
+                numeric_value = self._first_numeric(row_cells[1:])
+
+                for metric_key, aliases in label_map.items():
+                    if metrics.get(metric_key) is not None:
+                        continue
+                    if any(alias in row_label for alias in aliases):
+                        if numeric_value is None:
+                            continue
+                        metrics[metric_key] = numeric_value
+                        source = {
+                            "source_type": "table",
+                            "page": page,
+                            "row": row_cells,
+                        }
+                        metric_sources[metric_key] = source
+                        table_evidence.append(source)
+                        break
+
+        return metrics, metric_sources, table_evidence
+
+    def _first_numeric(self, cells: List[str]):
+        for cell in cells:
+            value = self._parse_numeric(cell)
+            if value is not None:
+                return value
+        return None
+
+    def _parse_numeric(self, text: str):
+        if text is None:
+            return None
+        s = str(text).strip()
+        if not s:
+            return None
+        s = s.replace(",", "")
+        s = s.replace("，", "")
+        s = s.replace("%", "")
+        match = re.search(r"[-+]?\d*\.?\d+", s)
+        if not match:
+            return None
+        try:
+            return float(match.group(0))
+        except Exception:
+            return None
 
 
 

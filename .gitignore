@@ -82,3 +82,5 @@ workspace/lessons/
 build/
 dist/
 *.egg-info/
+
+scripts/

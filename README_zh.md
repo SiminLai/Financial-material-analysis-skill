@@ -9,7 +9,9 @@
 ## 功能特点
 
 - 支持 PDF 和 Excel（`.xlsx`）财务文档解析
+- 支持基于版面信息的 PDF 解析，输出 `raw_text`（审计）、`cleaned_text`（切块/RAG）和 `table_regions`（二维 JSON 表格）
 - 自动提取收入、净利润、资产负债率、现金流等关键财务指标
+- 当存在表格证据时，指标抽取优先使用 `table_regions` 的结构化数据
 - 提供可解释的财务风险分析
 - 自动生成结构化财务分析报告
 - 报告生成后执行 reflection 校验（完整性/一致性/缺失字段/冲突检查）
@@ -139,7 +141,7 @@ python main.py
 
 ## 局限性
 
-- 更适用于英文财务文档。
+- 支持中英文流程，但效果仍依赖文档版面质量与 OCR 质量。
 - 分析质量依赖于文档排版和 OCR 质量。
 - 文档解析错误会影响最终分析结果。
 - 生成结果仅供参考，不构成投资建议。
@@ -148,10 +150,12 @@ python main.py
 
 ## 说明
 
-- PDF 解析依赖 `pdfplumber` 和 `PyPDF2`。
+- PDF 解析优先使用 PyMuPDF 的版面感知能力，不可用时回退到 `pdfplumber`/`PyPDF2`。
 - Excel 解析依赖 `openpyxl`。
 - 所有 API Key 建议通过环境变量配置。
 - 外部搜索功能默认关闭，需要用户主动开启。
+- 对于 PDF，解析输出包含 `text`、`raw_text`、`cleaned_text`、`tables`、`table_regions`。
+- `table_regions` 保留二维 `rows` 与 `page/bbox` 信息，例如 `{ "page": 10, "bbox": [x0, y0, x1, y1], "rows": [["Metric", "2025"], ["Revenue", "1000"]] }`。
 
 ### 执行边界
 
@@ -162,7 +166,7 @@ python main.py
 ### 当前流程
 
 ```text
-PDF/XLSX -> parser -> 指标抽取 -> 风险评分 -> [可选 browser/MCP] -> report -> reflection 校验
+PDF/XLSX -> parser -> 指标抽取 -> 风险评分 -> [可选 Tavily MCP 外部搜索] -> report -> reflection 校验
 ```
 
 ---
@@ -172,6 +176,7 @@ PDF/XLSX -> parser -> 指标抽取 -> 风险评分 -> [可选 browser/MCP] -> re
 - 本项目支持基于 BGE 的嵌入（位于 `providers/embedding_provider_bge.py`）。可通过环境变量 `EMBED_LOCALE` 指定 `en` 或 `zh`，或通过 `EMBED_MODEL` 指定具体模型。 
 - 当运行环境不可用 BGE 依赖时，系统会回退到本地确定性嵌入 stub 以便离线演示。
 - 本地 `VectorStore` 在检测到 `faiss` 安装时优先使用 FAISS 进行高效相似度检索；否则使用内存中的 NumPy 暴力检索。若需启用 FAISS，请在环境中安装（例如 `pip install faiss-cpu`）。
+- 初始 RAG 索引同时包含文本 chunk 与表格 chunk（`chunk_type: table`），便于按页回溯表格证据。
 
 ---
 

@@ -20,6 +20,7 @@ class PDFParserTool(BaseTool):
         "field_types": {
             "text": str,
             "tables": list,
+            "table_regions": list,
             "meta": dict,
         },
     }

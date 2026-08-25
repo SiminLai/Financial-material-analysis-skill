@@ -1,5 +1,6 @@
 import asyncio
 import os
+import json
 
 from providers.llm_provider import LLMProvider
 from providers.pdf_provider import PDFProvider
@@ -125,7 +126,7 @@ async def main():
         # allow thread_id configuration for tracing/running in parallel environments
         thread_id = os.getenv("THREAD_ID") or None
 
-        init_state = {"input_file": r"examples\Q4'25+EarningsRelease+FINAL+v1.pdf"}
+        init_state = {"input_file": r"examples\神工股份：锦州神工半导体股份有限公司2025年年度报告.pdf"}
         if thread_id:
             init_state["thread_id"] = thread_id
         # ================================
@@ -140,6 +141,7 @@ async def main():
         })
 
         text = document.get("text", "")
+        table_regions = document.get("table_regions") or []
 
         chunks = chunk_text(
             text,
@@ -155,9 +157,30 @@ async def main():
                 "text": c,
                 "meta": {
                     "source": "pdf",
+                    "chunk_type": "text",
                     "chunk_index": i
                 }
             })
+
+        # Add table chunks as structured JSON payloads; do not flatten table rows into plain text.
+        for i, table_region in enumerate(table_regions):
+            table_payload = {
+                "type": "table",
+                "page": table_region.get("page"),
+                "content": table_region.get("rows") or [],
+            }
+            docs.append(
+                {
+                    "id": f"pdf_table_chunk_{i}",
+                    "text": json.dumps(table_payload, ensure_ascii=False),
+                    "meta": {
+                        "source": "pdf",
+                        "chunk_type": "table",
+                        "page": table_region.get("page"),
+                        "content": table_region.get("rows") or [],
+                    },
+                }
+            )
 
         if docs:
             vector_store.add_documents(docs)

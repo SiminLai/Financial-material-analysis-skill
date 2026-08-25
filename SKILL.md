@@ -1,7 +1,7 @@
 ---
 name: financial-report-analysis-skill
 description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, then run post-report reflection validation. Supports optional RAG/MCP context with strict boundaries that prevent external evidence from overriding core metrics or risk scores."
-version: 1.0.7
+version: 1.1.0
 author: LLLLLLL
 keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection]
 inputs:
@@ -12,6 +12,7 @@ outputs:
   - reflection: json (fields: evaluation_results, internal_feedback, overall_score, external_feedback, conflict_resolution)
 requirements:
   - langgraph (optional)
+  - PyMuPDF (optional, layout-aware PDF parsing)
   - pdfplumber
   - PyPDF2
   - openpyxl
@@ -40,11 +41,11 @@ selector:
 
 ## Important capabilities
 
-- Document parsing: PDF and Excel table/text extraction using `pdfplumber`/`PyPDF2` and `openpyxl` providers.
-- Structured metric extraction and strict validation (Pydantic-backed schemas and rule checks).
+- Document parsing: layout-aware PDF and Excel extraction. PDF output keeps `raw_text` (audit), `cleaned_text` (RAG/chunking), and `table_regions` (2D JSON rows with page/bbox metadata).
+- Structured metric extraction and strict validation (Pydantic-backed schemas and rule checks), with `table_regions` prioritized over plain text when table evidence is available.
 - Deterministic risk engine with explicit rules and enforced recommendation logic (`BUY`/`HOLD`/`SELL`).
 - Evidence-first design: `EvidenceStore` + `EvidenceBuilder` persist parsed text, table cells, RAG items, imputer outputs, and risk flags with `evidence_id` for citation in reports.
-- RAG and MCP adapters: optional external search via Tavily MCP and DeepSeek-compatible LLM integration; retrieval is summarized and linked into reports but cannot override core metrics.
+- RAG and MCP adapters: optional external search via Tavily MCP and DeepSeek-compatible LLM integration; retrieval is summarized and linked into reports but cannot override core metrics. Initial indexing includes text chunks and structured table chunks.
 - Reflection & evaluation: modular evaluators (missing/completeness/consistency) and conflict-resolution hooks run after report generation as validation.
 - Imputation: best-effort metric imputation (e.g., debt ratio) from existing parsed evidence, with imputation evidence persisted.
 - Reproducible graph construction: LangGraph-based node graph with native checkpointer integration when available; fallback components for environments without LangGraph.
@@ -62,7 +63,9 @@ The graph is assembled in `graph/financial_graph.py` and started from `main.py`.
 
 ## Inputs and outputs
 
-- Accept `.pdf` and `.xlsx` input files. PDF text and tables are parsed with `pdfplumber`/`PyPDF2`; Excel workbooks use `openpyxl`.
+- Accept `.pdf` and `.xlsx` input files. PDF parsing is layout-aware with PyMuPDF when available and falls back to `pdfplumber`/`PyPDF2`; Excel workbooks use `openpyxl`.
+- For PDF input, parser output includes `text`, `raw_text`, `cleaned_text`, `tables`, and `table_regions`.
+- `table_regions` schema uses JSON with 2D rows, for example: `{ "page": 10, "bbox": [x0, y0, x1, y1], "rows": [["Metric", "2025"], ["Revenue", "1000"]] }`.
 - Extract only values explicitly present in the parsed document. The normalized metric schema is `company_name`, `revenue`, `net_profit`, `debt_ratio`, and `cash_flow`, plus validation metadata.
 - Return a report dictionary containing `summary`, `risk_assessment`, `recommendation`, `key_points`, `external_evidence`, and `meta`.
 - Treat generated reports as informational analysis, not investment advice. Preserve reported units and periods; do not compare or combine values with different units or reporting periods without making that limitation explicit.
@@ -78,6 +81,39 @@ python main.py
 ```
 
 `LLMProvider` calls the DeepSeek-compatible chat-completions endpoint. Without `DEEPSEEK_API_KEY`, the project intentionally falls back to stub responses for offline/demo execution; the output is not a meaningful financial analysis.
+
+## Environment variables
+
+- `DEEPSEEK_API_KEY` (optional): enables DeepSeek-compatible LLM summarization/explanations. If unset, the pipeline uses deterministic stub LLM responses.
+- `ENABLE_TAVILY` (optional): set to `true` to enable Tavily MCP external search branch.
+- `TAVILY_API_KEY` (optional): required when `ENABLE_TAVILY=true`.
+- `EMBED_LOCALE` (optional): selects default embedding language for BGE provider, `en` or `zh` (default: `en`).
+- `EMBED_MODEL` (optional): explicit embedding model path/name override. When set, it takes precedence over `EMBED_LOCALE`.
+
+PowerShell examples (complete commands):
+
+- Set Chinese embeddings and run:
+
+```powershell
+$env:EMBED_LOCALE = "zh"
+python main.py
+```
+
+- Set English embeddings and run:
+
+```powershell
+$env:EMBED_LOCALE = "en"
+python main.py
+```
+
+- Optional explicit model override (takes precedence over locale):
+
+```powershell
+$env:EMBED_LOCALE = "zh"
+$env:EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
+python main.py
+```
+
 
 ## Risk and recommendation rules
 

@@ -7,7 +7,9 @@ An evidence-first financial analysis skill built with LangGraph for PDF/XLSX doc
 ## Features
 
 - Parse financial documents from PDF and Excel (`.xlsx`) files
+- Layout-aware PDF parsing with `raw_text` (audit), `cleaned_text` (for chunking/RAG), and `table_regions` (2D JSON table rows)
 - Extract key financial metrics such as revenue, net profit, debt ratio, and cash flow
+- Prioritize structured extraction from `table_regions` when table evidence is available
 - Perform explainable financial risk analysis
 - Generate structured financial analysis reports
 - Run post-report reflection validation (completeness, consistency, missing fields, conflict checks)
@@ -139,7 +141,7 @@ By default:
 
 ## Limitations
 
-- Best suited for English financial documents.
+- Supports both English and Chinese workflows; quality still depends on document layout/OCR quality.
 - Analysis quality depends on document formatting and OCR quality.
 - Incorrect parsing may affect extracted metrics.
 - Generated reports are intended for informational purposes only.
@@ -148,10 +150,12 @@ By default:
 
 ## Notes
 
-- PDF parsing requires `pdfplumber` and `PyPDF2`.
+- PDF parsing is layout-aware with PyMuPDF when available, and falls back to `pdfplumber`/`PyPDF2`.
 - Excel parsing requires `openpyxl`.
 - API keys should always be configured using environment variables.
 - Optional external search is disabled by default.
+- For PDF documents, parser output includes `text`, `raw_text`, `cleaned_text`, `tables`, and `table_regions`.
+- `table_regions` keeps 2D rows with page/bbox metadata, for example `{ "page": 10, "bbox": [x0, y0, x1, y1], "rows": [["Metric", "2025"], ["Revenue", "1000"]] }`.
 
 ### Execution Boundaries
 
@@ -162,7 +166,7 @@ By default:
 ### Current Workflow
 
 ```text
-PDF/XLSX -> parser -> metric extraction -> risk scoring -> [browser/MCP if enabled] -> report -> reflection validation
+PDF/XLSX -> parser -> metric extraction -> risk scoring -> [Tavily MCP external search, if enabled] -> report -> reflection validation
 ```
 
 ---
@@ -172,6 +176,7 @@ PDF/XLSX -> parser -> metric extraction -> risk scoring -> [browser/MCP if enabl
 - This project supports BGE-based embeddings via `providers/embedding_provider_bge.py`. You can select the embedding locale via the environment variable `EMBED_LOCALE` (`en` or `zh`) or set a specific model with `EMBED_MODEL`.
 - By default the repo falls back to a deterministic local stub embedder when BGE runtime is not available.
 - The local `VectorStore` uses FAISS for efficient similarity search if `faiss` is installed; otherwise it falls back to an in-memory NumPy brute-force search. To enable FAISS install it in your environment (for example `pip install faiss-cpu`).
+- Initial RAG indexing now includes both text chunks and structured table chunks (`chunk_type: table`) so table page context can be retrieved and cited.
 
 ---
 

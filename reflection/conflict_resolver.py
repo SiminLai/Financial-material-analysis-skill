@@ -142,11 +142,11 @@ def resolve_conflicts(state: Dict[str, Any], external_items: List[Dict[str, Any]
                     reason = "agreement"
                 else:
                     # check external consensus (use weighted counts)
-                        top = max(counts.items(), key=lambda x: x[1]) if counts else (None, 0)
-                        if top[0] is not None and top[1] >= 3 and abs(top[0] - round(s_num,2)) > tol:
-                            chosen = float(top[0])
-                            reason = "external_consensus"
-                            conflicts.append({"metric": m, "state": s_num, "external_consensus": top[0]})
+                    top = max(counts.items(), key=lambda x: x[1]) if counts else (None, 0)
+                    if top[0] is not None and top[1] >= 3 and abs(top[0] - round(s_num,2)) > tol:
+                        chosen = float(top[0])
+                        reason = "external_consensus"
+                        conflicts.append({"metric": m, "state": s_num, "external_consensus": top[0]})
                     else:
                         chosen = s_num
                         reason = "prefer_state_needs_review" if counts else "state_only"
