@@ -125,17 +125,46 @@ The Skill does **not** upload:
 
 ## Usage
 
-Run the Skill from the project root:
+Run the Skill from the project root (recommended CLI mode):
+
+```bash
+python main.py --input-file "examples/your_report.pdf"
+```
+
+Alternative input via environment variable:
+
+```bash
+export INPUT_FILE="examples/your_report.pdf"
+python main.py
+```
+
+Windows PowerShell:
+
+```powershell
+$env:INPUT_FILE="examples\your_report.pdf"
+python main.py
+```
+
+Interactive fallback:
 
 ```bash
 python main.py
 ```
+
+If no `--input-file` and no `INPUT_FILE` are provided, the program prompts for a path in interactive terminals.
 
 By default:
 
 - External search is disabled.
 - Financial reports are generated using local document analysis only.
 - Reflection validation summary is printed after report generation.
+
+### Agent Invocation Flow
+
+- Resolve input path (`--input-file` -> `INPUT_FILE` -> interactive prompt)
+- Parse document into `text/raw_text/cleaned_text/table_regions`
+- Build initial RAG index from text chunks plus table chunks (`chunk_type: table`)
+- Execute graph pipeline and return report + reflection outputs
 
 ---
 

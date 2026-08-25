@@ -125,17 +125,46 @@ $env:TAVILY_API_KEY="your_api_key"
 
 ## 使用方法
 
-在项目根目录运行：
+在项目根目录运行（推荐命令行参数方式）：
+
+```bash
+python main.py --input-file "examples/your_report.pdf"
+```
+
+也可通过环境变量传入输入文件：
+
+```bash
+export INPUT_FILE="examples/your_report.pdf"
+python main.py
+```
+
+Windows PowerShell：
+
+```powershell
+$env:INPUT_FILE="examples\your_report.pdf"
+python main.py
+```
+
+交互式兜底：
 
 ```bash
 python main.py
 ```
+
+如果未提供 `--input-file` 且未设置 `INPUT_FILE`，在可交互终端中程序会提示输入文件路径。
 
 默认情况下：
 
 - 不开启外部搜索
 - 仅基于本地文档完成分析
 - 报告输出后会打印 reflection 校验摘要
+
+### Agent 调用流程
+
+- 解析输入路径（`--input-file` -> `INPUT_FILE` -> 交互提示）
+- 文档解析输出 `text/raw_text/cleaned_text/table_regions`
+- 构建初始 RAG 索引（文本 chunk + 表格 chunk，`chunk_type: table`）
+- 执行图流程并输出 report + reflection 结果
 
 ---
 

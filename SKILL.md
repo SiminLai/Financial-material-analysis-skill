@@ -1,7 +1,7 @@
 ---
 name: financial-report-analysis-skill
-description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, then run post-report reflection validation. Supports optional RAG/MCP context with strict boundaries that prevent external evidence from overriding core metrics or risk scores."
-version: 1.1.0
+description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, then run post-report reflection validation. Supports Chinese and English financial report input, plus optional RAG/MCP context with strict boundaries that prevent external evidence from overriding core metrics or risk scores."
+version: 1.2.1
 author: LLLLLLL
 keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection]
 inputs:
@@ -59,7 +59,22 @@ Run the pipeline in this order:
 PDF/XLSX -> parser -> metric extraction -> risk scoring -> [Tavily MCP, if enabled] -> report -> reflection validation
 ```
 
-The graph is assembled in `graph/financial_graph.py` and started from `main.py`. `main.py` currently uses the bundled Q4 earnings-release PDF as its demo input. Change `init_state["input_file"]` or invoke the compiled graph with another local `.pdf` or `.xlsx` file to analyze a different document.
+The graph is assembled in `graph/financial_graph.py` and started from `main.py`.
+
+Runtime input interface:
+
+- Preferred: CLI argument `--input-file <path-to-pdf-or-xlsx>`.
+- Alternative: environment variable `INPUT_FILE`.
+- Interactive fallback: if neither is provided and the process has a TTY, `main.py` prompts for a file path.
+- Optional tracing: pass `--thread-id` or set `THREAD_ID`.
+
+Agent invocation flow (current implementation):
+
+- Resolve input path (`--input-file` -> `INPUT_FILE` -> interactive prompt).
+- Parse document into `text/raw_text/cleaned_text/table_regions`.
+- Build initial RAG index using text chunks and table chunks (`chunk_type: table`).
+- Execute graph: `parser -> metric -> risk -> [optional Tavily MCP external search] -> report -> reflection validation`.
+- Return/print report and reflection outputs with linked evidence IDs.
 
 ## Inputs and outputs
 
@@ -77,6 +92,19 @@ Install the pinned dependencies, configure credentials as needed, then run the d
 ```powershell
 pip install -r requirements.txt
 $env:DEEPSEEK_API_KEY = "your_api_key"  # optional; no key uses deterministic stub LLM responses
+python main.py --input-file "examples\your_report.pdf"
+```
+
+Environment-variable input example:
+
+```powershell
+$env:INPUT_FILE = "examples\your_report.pdf"
+python main.py
+```
+
+Interactive example (no input arg/env):
+
+```powershell
 python main.py
 ```
 

@@ -1,6 +1,8 @@
 import asyncio
 import os
 import json
+import argparse
+import sys
 
 from providers.llm_provider import LLMProvider
 from providers.pdf_provider import PDFProvider
@@ -30,8 +32,41 @@ from reflection.analyzers.consistency import ConsistencyEvaluator
 from reflection.feedback_summarizer import FeedbackSummarizer
 
 
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Financial report analysis entrypoint")
+    parser.add_argument(
+        "--input-file",
+        dest="input_file",
+        help="Path to a local PDF/XLSX file to analyze",
+    )
+    parser.add_argument(
+        "--thread-id",
+        dest="thread_id",
+        help="Optional thread id for tracing/parallel runs",
+    )
+    return parser.parse_args()
+
+
+def _resolve_input_file(cli_input_file: str = None) -> str:
+    # Priority: CLI arg -> env var -> interactive prompt.
+    input_file = cli_input_file or os.getenv("INPUT_FILE")
+    if input_file:
+        return input_file.strip()
+
+    if sys.stdin.isatty():
+        typed = input("Please enter a PDF/XLSX file path to analyze: ").strip()
+        if typed:
+            return typed
+
+    raise ValueError(
+        "No input file provided. Use --input-file <path>, set INPUT_FILE, or run interactively."
+    )
+
+
 
 async def main():
+
+    args = _parse_args()
 
     mcp_manager = MCPManager(
         "config/mcp.json"
@@ -123,10 +158,11 @@ async def main():
             pass
 
 
-        # allow thread_id configuration for tracing/running in parallel environments
-        thread_id = os.getenv("THREAD_ID") or None
+        # allow thread_id configuration from CLI and env for tracing/running in parallel environments
+        thread_id = args.thread_id or os.getenv("THREAD_ID") or None
+        input_file = _resolve_input_file(args.input_file)
 
-        init_state = {"input_file": r"examples\神工股份：锦州神工半导体股份有限公司2025年年度报告.pdf"}
+        init_state = {"input_file": input_file}
         if thread_id:
             init_state["thread_id"] = thread_id
         # ================================
@@ -135,6 +171,7 @@ async def main():
         from utils.text_chunker import chunk_text
 
         print("\n===== BUILD INITIAL RAG INDEX =====")
+        print(f"Input file: {init_state['input_file']}")
 
         document = parser_tool.invoke({
             "file_path": init_state["input_file"]
