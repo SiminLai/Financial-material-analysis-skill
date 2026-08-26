@@ -184,15 +184,3 @@ This checkpoint is intended for debugging and reproducibility inspection only; i
 - `workspace/cache/`: local cached vector index, evidence store, and per-thread checkpoints.
 - `examples/`: sample financial PDFs and workbook.
 
-## Not required today: Docker or CI
-
-This repository is currently a local Python workflow used for research and experimentation. It does not require Docker or a CI pipeline for its current operating model.
-
-Docker and CI become relevant only when the project adds one or more of the following:
-
-- hosted deployment
-- released package artifacts
-- automated test execution in remote environments
-- cross-platform release pipelines or production deployment gates
-
-Until then, the lightweight local workflow is the intended operating mode.

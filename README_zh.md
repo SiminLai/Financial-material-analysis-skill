@@ -117,17 +117,6 @@ workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
 
 这是本地调试与并发隔离手段。不同线程会写入不同 checkpoint 文件，避免相互串扰。
 
----
-
-## 当前状态说明
-
-这个仓库当前是本地 Python 工作流，不是容器化服务程序，所以：
-
-- 不需要 Dockerfile。
-- 不需要 CI 配置。
-- 只有当你准备做线上部署、自动发布、托管服务或持续集成检查时，才需要补 Docker / CI。
-
-这能让项目更轻、更直接地保持调试和迭代效率。
 
 ---
 
@@ -140,16 +129,4 @@ workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
 
 ---
 
-## 运行产物位置
-
-```text
-workspace/
-  cache/
-    evidence_store.json
-    vector_index.npz
-    vector_index.npz.meta.json
-    langgraph_checkpoint_<thread_id>.sqlite
-```
-
-这些都是本地调试与检索用的产物，可以按需清理。
 

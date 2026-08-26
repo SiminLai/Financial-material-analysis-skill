@@ -119,16 +119,6 @@ workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
 
 This is a local debugging and isolation mechanism. Different threads write separate checkpoint files and are not intended to be shared across tasks.
 
----
-
-## Operational status
-
-This repo is currently meant to run as a local Python workflow, not as a containerized microservice. As a result:
-
-- No Dockerfile is required for the current local-research workflow.
-- No CI pipeline is required unless you later add automated release packaging, remote deployment, or a hosted service layer.
-
-This keeps the project lightweight and easier to debug while the skill is still evolving.
 
 ---
 
@@ -139,18 +129,5 @@ This keeps the project lightweight and easier to debug while the skill is still 
 - Final recommendation is enforced by logic, not left unconstrained to model output.
 - Generated analyses are informational only and not investment or audit advice.
 
----
 
-## Runtime artifact locations
-
-```text
-workspace/
-  cache/
-    evidence_store.json
-    vector_index.npz
-    vector_index.npz.meta.json
-    langgraph_checkpoint_<thread_id>.sqlite
-```
-
-These files are local artifacts for debugging and retrieval; they can be cleaned manually if desired.
 
