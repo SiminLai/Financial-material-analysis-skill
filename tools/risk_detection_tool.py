@@ -12,10 +12,10 @@ class RiskDetectionTool(BaseTool):
         "type": "dict",
         "required_fields": ["revenue", "net_profit", "debt_ratio", "cash_flow"],
         "field_types": {
-            "revenue": (int, float, type(None)),
-            "net_profit": (int, float, type(None)),
-            "debt_ratio": (int, float, type(None)),
-            "cash_flow": (int, float, type(None)),
+            "revenue": (int, float, dict, type(None)),
+            "net_profit": (int, float, dict, type(None)),
+            "debt_ratio": (int, float, dict, type(None)),
+            "cash_flow": (int, float, dict, type(None)),
         },
     }
 
@@ -38,15 +38,49 @@ class RiskDetectionTool(BaseTool):
         try:
             if value is None:
                 return None
+            if isinstance(value, dict):
+                value = value.get("value")
             return float(value)
-        except:
+        except Exception:
             return None
+
+    def _metric_value(self, metric):
+        if metric is None:
+            return None
+        if isinstance(metric, dict):
+            return self._safe_float(metric.get("value"))
+        return self._safe_float(metric)
+
+    def _metric_unit(self, metric):
+        if isinstance(metric, dict):
+            return metric.get("unit")
+        return None
+
+    def _normalize_metrics(self, metrics):
+        normalized = dict(metrics or {})
+        for key in ["revenue", "net_profit", "cash_flow", "debt_ratio", "cash_flow_ratio", "net_profit_yoy"]:
+            if key not in normalized:
+                continue
+            value = normalized.get(key)
+            if value is None:
+                normalized[key] = None
+                continue
+            if isinstance(value, dict):
+                normalized[key] = value
+                continue
+            normalized[key] = {
+                "value": self._safe_float(value),
+                "unit": "unknown",
+                "period": "FY2025",
+                "source": "Financial Results",
+            }
+        return normalized
     # =========================
     # MAIN ENTRY
     # =========================
     def _execute(self, input_data):
 
-        metrics = input_data
+        metrics = self._normalize_metrics(input_data)
 
         # 1. deterministic core
         rule_score, rule_flags = self._rule_based_score(metrics)
@@ -56,13 +90,7 @@ class RiskDetectionTool(BaseTool):
 
         # 3. final merge (controlled)
         return self._merge(rule_score, rule_flags, llm_analysis)
-    def _safe_float(self, value):
-        try:
-            if value is None:
-                return None
-            return float(value)
-        except:
-            return None
+
     # =========================
     # RULE ENGINE (TRUTH SOURCE)
     # =========================
@@ -71,10 +99,12 @@ class RiskDetectionTool(BaseTool):
         score = 0.0
         flags = []
 
-        debt_ratio = self._safe_float(m.get("debt_ratio"))
-        cash_flow = self._safe_float(m.get("cash_flow"))
-        net_profit = self._safe_float(m.get("net_profit"))
-        revenue = self._safe_float(m.get("revenue"))
+        debt_ratio = self._metric_value(m.get("debt_ratio"))
+        cash_flow = self._metric_value(m.get("cash_flow"))
+        net_profit = self._metric_value(m.get("net_profit"))
+        revenue = self._metric_value(m.get("revenue"))
+        revenue_unit = self._metric_unit(m.get("revenue"))
+        net_profit_yoy = self._as_ratio(m.get("net_profit_yoy"))
 
         # penalize missing critical data: missing metrics increase risk
         missing_penalty = 0.0
@@ -90,6 +120,7 @@ class RiskDetectionTool(BaseTool):
         if debt_ratio is None:
             missing_penalty += 0.1
             flags.append("MISSING_DEBT_RATIO")
+            flags.append("MISSING_FINANCIAL_FIELD")
 
         score += missing_penalty
 
@@ -100,21 +131,32 @@ class RiskDetectionTool(BaseTool):
             score += 0.2
             flags.append("ELEVATED_LEVERAGE")
 
-        # unit-sensitive rule: avoid absolute thresholds (e.g. 5000) and
-        # use cash-flow-to-revenue ratio to reduce false positives across
-        # different reporting units (USD vs millions USD).
+        # unit-sensitive rule: avoid absolute thresholds and use normalized unit-aware checks
         try:
             if revenue is not None and revenue != 0 and cash_flow is not None:
                 c2r = cash_flow / max(abs(revenue), 1.0)
                 if c2r < 0.01:
                     score += 0.3
                     flags.append("LOW_CASH_FLOW")
+                elif c2r < 0.03:
+                    score += 0.1
+                    flags.append("WEAK_CASH_FLOW_RATIO")
         except Exception:
             pass
 
-        if net_profit is not None and net_profit < 0:
-            score += 0.3
-            flags.append("LOSS_MAKING")
+        if debt_ratio is not None and 0.65 <= debt_ratio <= 0.7:
+            flags.append("LEVERAGE_NEAR_HIGH_THRESHOLD")
+
+        if net_profit_yoy is not None:
+            if net_profit_yoy <= -0.50:
+                score += 0.2
+                flags.append("SHARP_PROFIT_DECLINE")
+            elif net_profit_yoy <= -0.30:
+                score += 0.1
+                flags.append("PROFIT_DECLINE")
+
+        # Do not flag LOSS_MAKING solely because net_profit < 0.
+        # Profitability is evaluated with context, not simple sign-based risk.
 
         # profitability checks: profit margin
         try:
@@ -124,24 +166,19 @@ class RiskDetectionTool(BaseTool):
                     score += 0.15
                     flags.append("LOW_PROFIT_MARGIN")
                 if profit_margin < 0:
-                    score += 0.2
+                    score += 0.15
                     flags.append("NEGATIVE_MARGIN")
         except Exception:
             pass
 
         # anomaly detection: inconsistent cash flow vs profit
-        if (net_profit is not None) and (cash_flow is not None):
-            # if cash flow is negative while profit positive -> warning
-            if cash_flow < 0 and net_profit > 0:
-                score += 0.25
-                flags.append("CASH_FLOW_NEGATIVE_WHILE_PROFIT")
-
-            # large mismatch between reported profit and cash (possible non-cash adjustments)
+        if (net_profit is not None) and (cash_flow is not None) and (revenue is not None) and (revenue != 0):
+            # Only trigger when discrepancy is material relative to revenue, not merely sign mismatch.
             try:
-                denom = max(1.0, abs(net_profit))
-                if abs(net_profit - cash_flow) / denom > 2.0:
+                discrepancy = abs(net_profit - cash_flow) / abs(revenue)
+                if discrepancy > 0.35:
                     score += 0.15
-                    flags.append("PROFIT_CASH_MISMATCH")
+                    flags.append("PROFIT_CASH_DISCREPANCY")
             except Exception:
                 pass
 
@@ -150,15 +187,96 @@ class RiskDetectionTool(BaseTool):
             if revenue < 0:
                 score += 0.3
                 flags.append("NEGATIVE_REVENUE")
-            elif revenue > 0 and revenue < 100:
-                # very small revenue (units likely missing) may indicate parsing error
+            elif revenue > 0 and revenue_unit in ("million_usd", "usd") and revenue < 100:
                 score += 0.1
                 flags.append("SUSPICIOUS_SMALL_REVENUE")
 
-        # note: removed extra LOW_CASH_FLOW_TO_REVENUE penalty to avoid
-        # double-counting after making LOW_CASH_FLOW ratio-based.
-
         return min(score, 1.0), flags
+
+    def _as_ratio(self, value):
+        value = self._safe_float(value)
+        if value is None:
+            return None
+        return value / 100.0 if abs(value) > 1.0 else value
+
+    # =========================
+    # LLM (EXPLANATION ONLY)
+    # =========================
+    def _llm_reasoning(self, metrics, flags, score):
+
+        prompt = f"""
+You are a financial risk explanation assistant.
+
+IMPORTANT RULE:
+- DO NOT compute risk score
+- ONLY explain given risk signals
+
+INPUT METRICS:
+{metrics}
+
+RULE FLAGS:
+{flags}
+
+RISK SCORE (already computed):
+{score}
+
+Return ONLY JSON:
+{{
+    "risk_level_explanation": "...",
+    "key_drivers": []
+}}
+"""
+
+        raw = self._llm._request(prompt)
+
+        return self._safe_parse(raw)
+
+    # =========================
+    # SAFE PARSER
+    # =========================
+    def _safe_parse(self, text):
+
+        try:
+            match = re.search(r"\{.*\}", text, re.DOTALL)
+            if not match:
+                return {"risk_level_explanation": "parse_failed", "key_drivers": []}
+
+            return json.loads(match.group(0))
+
+        except Exception:
+            return {"risk_level_explanation": "invalid_llm_output", "key_drivers": []}
+
+    # =========================
+    # FINAL MERGE (CONTROLLED)
+    # =========================
+    def _merge(self, score, flags, llm_analysis):
+
+        if score < 0.3:
+            level = "LOW"
+        elif score < 0.7:
+            level = "MEDIUM"
+        else:
+            level = "HIGH"
+
+        return {
+            "risk_score": score,
+            "risk_level": level,
+            "risk_flags": flags,
+
+            "explanation": llm_analysis,
+
+            "meta": {
+                "engine": "risk_v2.1",
+                "llm_role": "explanation_only",
+                "rule_source": "deterministic"
+            }
+        }
+
+    def _as_ratio(self, value):
+        value = self._safe_float(value)
+        if value is None:
+            return None
+        return value / 100.0 if abs(value) > 1.0 else value
 
     # =========================
     # LLM (EXPLANATION ONLY)

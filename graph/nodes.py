@@ -5,7 +5,67 @@ Each node:
 2. Invoke Tool
 3. Write result back to State
 """
+import json
 import os
+
+from utils.text_chunker import chunk_text
+
+
+def create_rag_index_node(vector_store):
+    """Index parsed document text and table regions into the vector store."""
+
+    def rag_index_node(state):
+        document = state.get("document")
+        if document is None:
+            raise ValueError("state is missing required key: 'document'")
+
+        if vector_store is None:
+            return state
+
+        text = document.get("text", "")
+        table_regions = document.get("table_regions") or []
+
+        docs = []
+        chunks = chunk_text(text, chunk_size=1000, overlap=300)
+        for i, chunk in enumerate(chunks):
+            docs.append({
+                "id": f"pdf_chunk_{i}",
+                "text": chunk,
+                "meta": {
+                    "source": "pdf",
+                    "chunk_type": "text",
+                    "chunk_index": i,
+                },
+            })
+
+        for i, table_region in enumerate(table_regions):
+            table_payload = {
+                "type": "table",
+                "page": table_region.get("page"),
+                "content": table_region.get("rows") or [],
+            }
+            docs.append({
+                "id": f"pdf_table_chunk_{i}",
+                "text": json.dumps(table_payload, ensure_ascii=False),
+                "meta": {
+                    "source": "pdf",
+                    "chunk_type": "table",
+                    "page": table_region.get("page"),
+                    "content": table_region.get("rows") or [],
+                },
+            })
+
+        if docs:
+            print(f"[RAG] generated {len(docs)} chunks for indexing into vector_store")
+            vector_store.add_documents(docs)
+        else:
+            print("[RAG] generated 0 chunks for indexing into vector_store")
+
+        state["rag_indexed_count"] = len(docs)
+        return state
+
+    return rag_index_node
+
 
 def create_parser_node(parser_tool, evidence_builder=None):
 
@@ -582,7 +642,12 @@ def create_reflection_node(reflection_engine, rag_tool=None, evidence_builder=No
                 conflicts = ((out.get('conflict_resolution') or {}).get('conflicts') or [])
                 conflict_count = len(conflicts)
                 overall = out.get('overall_score')
-                needs_review = conflict_count > 0 or (isinstance(overall, (int, float)) and float(overall) < 0.8)
+                needs_review = (
+                    conflict_count > 0
+                    or _status('consistency') == 'FAIL'
+                    or _status('completeness') == 'FAIL'
+                    or (isinstance(overall, (int, float)) and float(overall) < 0.8)
+                )
 
                 reflection_summary = {
                     'overall_score': overall,

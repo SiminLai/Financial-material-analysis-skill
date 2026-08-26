@@ -16,6 +16,11 @@ def build_edges(builder, enable_browser: bool):
 
     builder.add_edge(
         "parser",
+        "rag_index"
+    )
+
+    builder.add_edge(
+        "rag_index",
         "metric"
     )
 

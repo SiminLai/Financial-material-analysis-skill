@@ -11,11 +11,13 @@ class RAGTool:
 
     def retrieve(self, query: str, k: int = 5):
         results = []
+        print(f"[RAG] retrieve(query={query[:80]!r}, k={k})")
 
         # 1) vector store
         if self.vector_store:
             try:
                 vs = self.vector_store.search(query, k)
+                print(f"[RAG] vector_store.search() returned {len(vs) if isinstance(vs, list) else 'non-list'} results")
                 if vs:
                     # normalize metadata shape to dict with 'content'
                     for item in vs:
@@ -25,7 +27,8 @@ class RAGTool:
                             results.append({"content": str(item)})
                     if len(results) >= k:
                         return results[:k]
-            except Exception:
+            except Exception as exc:
+                print(f"[RAG] vector_store search failed: {type(exc).__name__}: {exc}")
                 pass
 
         # 2) external retriever (e.g., MCP tool)
@@ -37,21 +40,25 @@ class RAGTool:
                     ext = self.external_retriever.search(query, k)
                 elif hasattr(self.external_retriever, "call_mcp"):
                     ext = self.external_retriever.call_mcp(query)
+                print(f"[RAG] external_retriever returned {len(ext) if isinstance(ext, list) else 'non-list'} results")
                 if ext:
                     for e in ext:
                         results.append({"content": e.get("text") if isinstance(e, dict) else str(e)})
                     if len(results) >= k:
                         return results[:k]
-            except Exception:
+            except Exception as exc:
+                print(f"[RAG] external retrieval failed: {type(exc).__name__}: {exc}")
                 pass
 
         # 3) fallback to MemoryManager keyword query
         if self.memory_manager:
             try:
                 mem = self.memory_manager.query(query, k)
+                print(f"[RAG] memory_manager.query() returned {len(mem)} results")
                 for m in mem:
                     results.append({"id": m.get("id"), "content": m.get("content"), "meta": m.get("metadata")})
-            except Exception:
+            except Exception as exc:
+                print(f"[RAG] memory retrieval failed: {type(exc).__name__}: {exc}")
                 pass
 
         # dedupe by content

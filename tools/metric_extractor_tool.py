@@ -32,11 +32,13 @@ class MetricExtractorTool(BaseTool):
             "meta"
         ],
         "field_types": {
-            "company_name": str,
-            "revenue": (int, float, type(None)),
-            "net_profit": (int, float, type(None)),
-            "debt_ratio": (int, float, type(None)),
-            "cash_flow": (int, float, type(None)),
+            "company_name": (str, type(None)),
+            "revenue": (int, float, dict, type(None)),
+            "net_profit": (int, float, dict, type(None)),
+            "debt_ratio": (int, float, dict, type(None)),
+            "cash_flow": (int, float, dict, type(None)),
+            "cash_flow_ratio": (int, float, dict, type(None)),
+            "net_profit_yoy": (int, float, dict, type(None)),
             "meta": dict,
         },
     }
@@ -49,6 +51,8 @@ class MetricExtractorTool(BaseTool):
         "debt_ratio",
         "cash_flow"
     ]
+
+    OPTIONAL_NUMERIC_KEYS = ["cash_flow_ratio", "net_profit_yoy"]
 
 
     def __init__(self, llm_provider: Any):
@@ -97,10 +101,8 @@ class MetricExtractorTool(BaseTool):
             if value is not None:
                 parsed[key] = value
 
-
-        validated = self._validate(
-            parsed
-        )
+        validated = self._normalize_metrics(parsed)
+        validated = self._validate(validated)
 
         validated_meta = validated.get("meta", {})
         validated_meta["metric_sources"] = table_sources
@@ -108,8 +110,43 @@ class MetricExtractorTool(BaseTool):
         validated_meta["source_priority"] = "table_regions_over_text"
         validated["meta"] = validated_meta
 
-
         return validated
+
+    def _normalize_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(metrics or {})
+        for key in ["revenue", "net_profit", "cash_flow", "debt_ratio", "cash_flow_ratio", "net_profit_yoy"]:
+            raw_value = normalized.get(key)
+            if raw_value is None:
+                normalized[key] = None
+                continue
+            if isinstance(raw_value, dict):
+                value = raw_value.get("value")
+                unit = raw_value.get("unit")
+                period = raw_value.get("period") or "FY2025"
+                source = raw_value.get("source") or "Financial Results"
+                normalized[key] = {
+                    "value": value,
+                    "unit": unit,
+                    "period": period,
+                    "source": source,
+                }
+                continue
+            try:
+                numeric = float(raw_value)
+            except (TypeError, ValueError):
+                normalized[key] = None
+                continue
+            normalized[key] = {
+                "value": numeric,
+                "unit": "unknown",
+                "period": "FY2025",
+                "source": "Financial Results",
+            }
+        if "company_name" in normalized:
+            normalized["company_name"] = normalized.get("company_name") or None
+        normalized.setdefault("meta", {})
+        normalized["meta"].setdefault("normalized", True)
+        return normalized
 
 
 
@@ -158,6 +195,8 @@ Extract:
 3. Net profit
 4. Debt ratio
 5. Operating cash flow
+6. Operating-cash-flow-to-revenue ratio, if explicitly stated
+7. Net-profit year-over-year change, if explicitly stated. Use a negative number for a decline.
 
 
 OUTPUT FORMAT:
@@ -167,7 +206,9 @@ OUTPUT FORMAT:
     "revenue": number or null,
     "net_profit": number or null,
     "debt_ratio": number or null,
-    "cash_flow": number or null
+    "cash_flow": number or null,
+    "cash_flow_ratio": number or null,
+    "net_profit_yoy": number or null
 }}
 
 """
@@ -353,6 +394,12 @@ OUTPUT FORMAT:
                         value
                     )
 
+        # Preserve explicitly disclosed dynamic indicators for risk and
+        # recommendation guardrails. They are optional because many reports
+        # do not state them in a directly extractable form.
+        for key in self.OPTIONAL_NUMERIC_KEYS:
+            result[key] = self._safe_float(data.get(key)) if data.get(key) is not None else None
+
 
         confidence = self._compute_confidence(
             result,
@@ -394,11 +441,12 @@ OUTPUT FORMAT:
     ):
 
         try:
-
+            if value is None:
+                return None
+            if isinstance(value, dict):
+                return self._safe_float(value.get("value"))
             return float(value)
-
-        except:
-
+        except Exception:
             return None
 
 

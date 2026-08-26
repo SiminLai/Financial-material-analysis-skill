@@ -3,6 +3,7 @@ import os
 import json
 import argparse
 import sys
+import uuid
 
 from providers.llm_provider import LLMProvider
 from providers.pdf_provider import PDFProvider
@@ -62,6 +63,36 @@ def _resolve_input_file(cli_input_file: str = None) -> str:
         "No input file provided. Use --input-file <path>, set INPUT_FILE, or run interactively."
     )
 
+
+async def _run_graph(graph, init_state):
+    result = await graph.ainvoke(
+        init_state,
+        config={"configurable": {"thread_id": init_state["thread_id"]}},
+    )
+
+    print(result["report"])
+
+    # print concise post-report reflection validation summary
+    try:
+        reflection = result.get('reflection') if isinstance(result, dict) else None
+        if reflection:
+            evals = reflection.get('evaluation_results') or []
+            conflicts = (reflection.get('conflict_resolution') or {}).get('conflicts') or []
+            overall = reflection.get('overall_score')
+
+            print("\nReflection validation summary:")
+            print(f"- overall_score: {overall}")
+            print(f"- evaluator_count: {len(evals)}")
+            print(f"- conflict_count: {len(conflicts)}")
+
+            # show the first few internal feedback messages for quick diagnosis
+            feedback = reflection.get('internal_feedback') or []
+            for msg in feedback[:3]:
+                print(f"- feedback: {msg}")
+    except Exception as exc:
+        print(f"Reflection summary unavailable: {type(exc).__name__}: {exc}")
+
+    return result
 
 
 async def main():
@@ -138,16 +169,48 @@ async def main():
         vector_store = VectorStore(embedding_provider=embedder, dim=embedder.dim)
         rag_tool = RAGTool(memory_manager=memory_manager, vector_store=vector_store)
 
-        graph = create_finance_graph(
-            parser_tool=parser_tool,
-            metric_tool=metric_tool,
-            risk_tool=risk_tool,
-            browser_tool=search_tool,
-            report_tool=report_tool,
-            llm_provider=llm_provider,
-            embedder=embedder,
-            rag_tool=rag_tool,  
-        )
+        # allow thread_id configuration from CLI and env for tracing/running in parallel environments
+        thread_id = args.thread_id or os.getenv("THREAD_ID") or f"thread-{uuid.uuid4().hex[:12]}"
+        input_file = _resolve_input_file(args.input_file)
+
+        init_state = {"input_file": input_file, "thread_id": thread_id}
+
+        graph = None
+        db_path = None
+        try:
+            from pathlib import Path
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+            db_dir = Path("workspace/cache")
+            db_dir.mkdir(parents=True, exist_ok=True)
+            db_path = db_dir / f"langgraph_checkpoint_{thread_id}.sqlite"
+
+            async with AsyncSqliteSaver.from_conn_string(str(db_path)) as saver:
+                graph = create_finance_graph(
+                    parser_tool=parser_tool,
+                    metric_tool=metric_tool,
+                    risk_tool=risk_tool,
+                    browser_tool=search_tool,
+                    report_tool=report_tool,
+                    llm_provider=llm_provider,
+                    embedder=embedder,
+                    rag_tool=rag_tool,
+                    checkpointer=saver,
+                )
+                graph.langgraph_checkpoint = str(db_path)
+                result = await _run_graph(graph, init_state)
+                return result
+        except Exception:
+            graph = create_finance_graph(
+                parser_tool=parser_tool,
+                metric_tool=metric_tool,
+                risk_tool=risk_tool,
+                browser_tool=search_tool,
+                report_tool=report_tool,
+                llm_provider=llm_provider,
+                embedder=embedder,
+                rag_tool=rag_tool,
+            )
 
         # If the graph saved a LangGraph checkpoint during construction, print it for debugging
         try:
@@ -157,97 +220,19 @@ async def main():
         except Exception:
             pass
 
+        try:
+            if hasattr(graph, 'langgraph_checkpoint'):
+                base_dir = os.path.dirname(graph.langgraph_checkpoint) or '.'
+                base_name = os.path.basename(graph.langgraph_checkpoint)
+                stem, ext = os.path.splitext(base_name)
+                graph.langgraph_checkpoint = os.path.join(base_dir, f"{stem}_{thread_id}{ext}")
+        except Exception:
+            pass
 
-        # allow thread_id configuration from CLI and env for tracing/running in parallel environments
-        thread_id = args.thread_id or os.getenv("THREAD_ID") or None
-        input_file = _resolve_input_file(args.input_file)
-
-        init_state = {"input_file": input_file}
-        if thread_id:
-            init_state["thread_id"] = thread_id
-        # ================================
-        # Pre-index document for RAG
-        # ================================
-        from utils.text_chunker import chunk_text
-
-        print("\n===== BUILD INITIAL RAG INDEX =====")
+        print("\n===== RUN GRAPH PIPELINE =====")
         print(f"Input file: {init_state['input_file']}")
 
-        document = parser_tool.invoke({
-            "file_path": init_state["input_file"]
-        })
-
-        text = document.get("text", "")
-        table_regions = document.get("table_regions") or []
-
-        chunks = chunk_text(
-            text,
-            chunk_size=1000,
-            overlap=300
-        )
-
-        docs = []
-
-        for i, c in enumerate(chunks):
-            docs.append({
-                "id": f"pdf_chunk_{i}",
-                "text": c,
-                "meta": {
-                    "source": "pdf",
-                    "chunk_type": "text",
-                    "chunk_index": i
-                }
-            })
-
-        # Add table chunks as structured JSON payloads; do not flatten table rows into plain text.
-        for i, table_region in enumerate(table_regions):
-            table_payload = {
-                "type": "table",
-                "page": table_region.get("page"),
-                "content": table_region.get("rows") or [],
-            }
-            docs.append(
-                {
-                    "id": f"pdf_table_chunk_{i}",
-                    "text": json.dumps(table_payload, ensure_ascii=False),
-                    "meta": {
-                        "source": "pdf",
-                        "chunk_type": "table",
-                        "page": table_region.get("page"),
-                        "content": table_region.get("rows") or [],
-                    },
-                }
-            )
-
-        if docs:
-            vector_store.add_documents(docs)
-
-        print(
-            f"Indexed {len(docs)} PDF chunks into RAG"
-        )
-        result = await graph.ainvoke(init_state)
-
-        print(result["report"])
-
-        # print concise post-report reflection validation summary
-        try:
-            reflection = result.get('reflection') if isinstance(result, dict) else None
-            if reflection:
-                evals = reflection.get('evaluation_results') or []
-                conflicts = (reflection.get('conflict_resolution') or {}).get('conflicts') or []
-                overall = reflection.get('overall_score')
-
-                print("\nReflection validation summary:")
-                print(f"- overall_score: {overall}")
-                print(f"- evaluator_count: {len(evals)}")
-                print(f"- conflict_count: {len(conflicts)}")
-
-                # show the first few internal feedback messages for quick diagnosis
-                feedback = reflection.get('internal_feedback') or []
-                for msg in feedback[:3]:
-                    print(f"- feedback: {msg}")
-        except Exception as e:
-            print('Could not print reflection validation summary:', e)
+        result = await _run_graph(graph, init_state)
 
         # print RAG/external chunks used by the graph (if any)
         try:

@@ -1,9 +1,9 @@
 ---
 name: financial-report-analysis-skill
-description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, then run post-report reflection validation. Supports Chinese and English financial report input, plus optional RAG/MCP context with strict boundaries that prevent external evidence from overriding core metrics or risk scores."
-version: 1.2.1
+description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, run post-report reflection validation, and maintain local RAG/vector artifacts under the workspace cache. This is a local workflow-first repository; Docker and CI are not required unless a production deployment step is added."
+version: 1.2.3
 author: LLLLLLL
-keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection]
+keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection, local-workflow]
 inputs:
   - file: pdf|xlsx
   - expect: financial statements, earnings releases, investor materials
@@ -28,35 +28,29 @@ selector:
 
 ## What it does
 
-- End-to-end LangGraph workflow that parses local financial documents (`.pdf`, `.xlsx`), extracts normalized metrics (`company_name`, `revenue`, `net_profit`, `debt_ratio`, `cash_flow`), scores deterministic financial risks, and produces evidence-aware structured JSON reports.
-- Persists all important artifacts as `Evidence` (with `evidence_id`) and separates `internal_evidence_ids` from `external_evidence_ids` for clearer audit boundaries.
-- Supports optional RAG/MCP integration (Tavily/DeepSeek) for external context; compresses and summarizes retrieved items and injects them as supporting evidence without overwriting core deterministic metrics.
-- Runs post-report reflection validation (completeness, consistency, missing-fields, conflict checks) to surface quality and evidence issues after generation.
+- End-to-end local workflow that parses financial documents (`.pdf`, `.xlsx`), extracts normalized metrics (`company_name`, `revenue`, `net_profit`, `debt_ratio`, `cash_flow`), scores deterministic financial risks, and produces evidence-aware structured JSON reports.
+- Stores parsed text, evidence, vector metadata, and per-thread checkpoints under the local workspace cache so the workflow remains auditable and debuggable.
+- Supports optional RAG/MCP integration (Tavily/DeepSeek) for external context, but keeps external evidence as supporting-only context that cannot overwrite core metrics or risk scores.
+- Runs post-report reflection validation (completeness, consistency, missing-fields, conflict checks) to surface quality issues after report generation.
+- Keeps missing critical values as `None` instead of inventing synthetic defaults.
 
-## When to use
+## Current runtime model
 
-- Automating structured extraction and analysis of annual/quarterly reports, earnings releases, and investor materials where reproducible traceability of evidence is required.
-- Augmenting deterministic rule-based risk scoring with contextual external evidence (RAG) while keeping decisions auditable and grounded in parsed values.
-- Rapid prototyping of LangGraph + RAG + LLM pipelines where you need clear separation between parsed facts, inferred values, external evidence, and LLM explanations.
+This project is intentionally a local Python-based workflow rather than a packaged container service. The repository currently expects direct execution from a Python environment and uses local workspace storage for:
 
-## Important capabilities
+- vector index persistence
+- evidence store persistence
+- thread-scoped checkpoint files
+- transient debug artifacts
 
-- Document parsing: layout-aware PDF and Excel extraction. PDF output keeps `raw_text` (audit), `cleaned_text` (RAG/chunking), and `table_regions` (2D JSON rows with page/bbox metadata).
-- Structured metric extraction and strict validation (Pydantic-backed schemas and rule checks), with `table_regions` prioritized over plain text when table evidence is available.
-- Deterministic risk engine with explicit rules and enforced recommendation logic (`BUY`/`HOLD`/`SELL`).
-- Evidence-first design: `EvidenceStore` + `EvidenceBuilder` persist parsed text, table cells, RAG items, imputer outputs, and risk flags with `evidence_id` for citation in reports.
-- RAG and MCP adapters: optional external search via Tavily MCP and DeepSeek-compatible LLM integration; retrieval is summarized and linked into reports but cannot override core metrics. Initial indexing includes text chunks and structured table chunks.
-- Reflection & evaluation: modular evaluators (missing/completeness/consistency) and conflict-resolution hooks run after report generation as validation.
-- Imputation: best-effort metric imputation (e.g., debt ratio) from existing parsed evidence, with imputation evidence persisted.
-- Reproducible graph construction: LangGraph-based node graph with native checkpointer integration when available; fallback components for environments without LangGraph.
-- Production readiness features: LLM stub/production modes, retry/backoff for remote LLMs, safe release cleanup script, and guidance for GitHub publishing.
+Because of this local-first design, Docker and CI are not required unless you later add a production deployment path or release automation.
 
 ## Operating model
 
 Run the pipeline in this order:
 
 ```text
-PDF/XLSX -> parser -> metric extraction -> risk scoring -> [Tavily MCP, if enabled] -> report -> reflection validation
+PDF/XLSX -> parser -> rag_index -> metric extraction -> risk scoring -> report -> reflection validation
 ```
 
 The graph is assembled in `graph/financial_graph.py` and started from `main.py`.
@@ -68,13 +62,14 @@ Runtime input interface:
 - Interactive fallback: if neither is provided and the process has a TTY, `main.py` prompts for a file path.
 - Optional tracing: pass `--thread-id` or set `THREAD_ID`.
 
-Agent invocation flow (current implementation):
+Current implementation flow:
 
 - Resolve input path (`--input-file` -> `INPUT_FILE` -> interactive prompt).
 - Parse document into `text/raw_text/cleaned_text/table_regions`.
 - Build initial RAG index using text chunks and table chunks (`chunk_type: table`).
-- Execute graph: `parser -> metric -> risk -> [optional Tavily MCP external search] -> report -> reflection validation`.
-- Return/print report and reflection outputs with linked evidence IDs.
+- Execute graph: `parser -> rag_index -> metric -> risk -> [optional Tavily MCP external search] -> report -> reflection validation`.
+- Persist vector artifacts to `workspace/cache/vector_index.npz` and `workspace/cache/vector_index.npz.meta.json`.
+- Write a per-thread SQLite checkpoint file under `workspace/cache/`.
 
 ## Inputs and outputs
 
@@ -87,7 +82,7 @@ Agent invocation flow (current implementation):
 
 ## Run locally
 
-Install the pinned dependencies, configure credentials as needed, then run the demo:
+Install dependencies, configure credentials if needed, and run the demo:
 
 ```powershell
 pip install -r requirements.txt
@@ -108,7 +103,7 @@ Interactive example (no input arg/env):
 python main.py
 ```
 
-`LLMProvider` calls the DeepSeek-compatible chat-completions endpoint. Without `DEEPSEEK_API_KEY`, the project intentionally falls back to stub responses for offline/demo execution; the output is not a meaningful financial analysis.
+`LLMProvider` calls the DeepSeek-compatible chat-completions endpoint. Without `DEEPSEEK_API_KEY`, the project intentionally falls back to stub responses for offline/demo execution.
 
 ## Environment variables
 
@@ -117,31 +112,19 @@ python main.py
 - `TAVILY_API_KEY` (optional): required when `ENABLE_TAVILY=true`.
 - `EMBED_LOCALE` (optional): selects default embedding language for BGE provider, `en` or `zh` (default: `en`).
 - `EMBED_MODEL` (optional): explicit embedding model path/name override. When set, it takes precedence over `EMBED_LOCALE`.
+- `THREAD_ID` (optional): per-run identifier for checkpoint and trace isolation.
 
-PowerShell examples (complete commands):
-
-- Set Chinese embeddings and run:
+PowerShell examples:
 
 ```powershell
 $env:EMBED_LOCALE = "zh"
-python main.py
+python main.py --input-file "examples\神工股份：锦州神工半导体股份有限公司2025年年度报告.pdf"
 ```
-
-- Set English embeddings and run:
 
 ```powershell
 $env:EMBED_LOCALE = "en"
-python main.py
+python main.py --input-file "examples\your_report.pdf"
 ```
-
-- Optional explicit model override (takes precedence over locale):
-
-```powershell
-$env:EMBED_LOCALE = "zh"
-$env:EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
-python main.py
-```
-
 
 ## Risk and recommendation rules
 
@@ -163,20 +146,53 @@ $env:TAVILY_API_KEY = "your_api_key"
 python main.py
 ```
 
-With both variables set, `main.py` registers the `tavily` MCP server defined in `config/mcp.json`. The graph routes to browser search when the deterministic risk score is at least `0.1`; otherwise it goes directly to reporting. External material is supporting evidence only: never use it to overwrite extracted metrics or the computed risk score, and keep evidence IDs/citations with claims that rely on it.
+The graph routes to browser search only when the deterministic risk score is at least `0.1`; otherwise it goes directly to report generation. External material is supporting evidence only: never use it to overwrite extracted metrics or the computed risk score, and keep evidence IDs and citations with claims that rely on it.
 
 ## Evidence, memory, and extension notes
 
 - Parser and metric nodes save document/table evidence, which the report node converts into readable citations where available.
 - The repository includes local memory, vector-store, RAG, imputation, and reflection modules. In the current flow, reflection executes after report generation for post-report validation.
+- Missing values remain `None`; they are not silently imputed without evidence and explicit logic.
 - Add a new input format by extending `DocumentParserTool` and its provider, then retain the normalized document shape expected by `MetricExtractorTool`.
-- Add metrics by updating the extractor schema, validation, deterministic risk rules, report consistency checks, and tests together. Do not rely on an LLM-only value for a decision-critical calculation.
+- Add metrics by updating the extractor schema, validation, deterministic risk rules, report consistency checks, and tests together.
+
+## Vector store and embeddings
+
+- This project supports BGE-based embeddings via `providers/embedding_provider_bge.py`.
+- `EMBED_LOCALE` selects `en` or `zh`, and `EMBED_MODEL` overrides the locale default when explicitly set.
+- The local `VectorStore` persists data to `workspace/cache/vector_index.npz` and `workspace/cache/vector_index.npz.meta.json`.
+- If the dependency is not installed, the project falls back to a deterministic local stub embedder instead of crashing.
+- Initial RAG indexing includes both text chunks and table chunks (`chunk_type: table`), allowing page-level retrieval and evidence citation.
+
+## Checkpointing and isolation
+
+During graph construction the skill writes a lightweight LangGraph SQLite checkpoint per `thread_id` for debugging, traceability, and concurrency isolation:
+
+```text
+workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
+```
+
+This checkpoint is intended for debugging and reproducibility inspection only; it does not serialize node callables, and different threads are isolated by file.
 
 ## Repository map
 
-- `main.py`: demo entry point and dependency wiring.
+- `main.py`: project entry point and dependency wiring.
 - `graph/`: LangGraph nodes, routing, and edges.
 - `tools/`: document parsing, extraction, risk, reporting, RAG, and MCP adapters.
-- `providers/`: PDF, Excel, LLM, embedding, table, and evidence providers.
+- `providers/`: PDF, Excel, LLM, embedding, evidence, and table providers.
 - `reflection/` and `memory/`: evidence, retrieval, evaluation, and feedback building blocks.
+- `workspace/cache/`: local cached vector index, evidence store, and per-thread checkpoints.
 - `examples/`: sample financial PDFs and workbook.
+
+## Not required today: Docker or CI
+
+This repository is currently a local Python workflow used for research and experimentation. It does not require Docker or a CI pipeline for its current operating model.
+
+Docker and CI become relevant only when the project adds one or more of the following:
+
+- hosted deployment
+- released package artifacts
+- automated test execution in remote environments
+- cross-platform release pipelines or production deployment gates
+
+Until then, the lightweight local workflow is the intended operating mode.

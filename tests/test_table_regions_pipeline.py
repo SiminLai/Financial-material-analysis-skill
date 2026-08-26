@@ -1,8 +1,12 @@
+import asyncio
 import json
 import os
 import tempfile
 import unittest
 
+from graph.financial_graph import create_finance_graph
+from memory.manager import MemoryManager
+from memory.vector_store import VectorStore
 from providers.pdf_provider import PDFProvider
 from tools.metric_extractor_tool import MetricExtractorTool
 from providers.evidence_builder import EvidenceBuilder
@@ -85,6 +89,72 @@ class TestTableRegionsPipeline(unittest.TestCase):
             stored = evidence_store.get(ids[0])
             self.assertEqual(stored.get("page"), 10)
             self.assertEqual((stored.get("meta") or {}).get("type"), "table")
+
+    def test_graph_indexes_document_chunks_in_pipeline(self):
+        class _Parser:
+            def invoke(self, payload):
+                return {
+                    "text": "Revenue was 1000. Net profit was 150. Debt ratio was 0.35.",
+                    "cleaned_text": "Revenue was 1000. Net profit was 150. Debt ratio was 0.35.",
+                    "table_regions": [],
+                }
+
+        class _Metric:
+            def invoke(self, document):
+                return {
+                    "revenue": 1000.0,
+                    "net_profit": 150.0,
+                    "debt_ratio": 0.35,
+                    "meta": {},
+                }
+
+        class _Risk:
+            def invoke(self, metrics):
+                return {
+                    "risk_score": 0.2,
+                    "risk_flags": [],
+                }
+
+        class _Report:
+            def invoke(self, payload):
+                return {
+                    "summary": "Stable business",
+                    "risk_assessment": "Low risk",
+                    "recommendation": "HOLD",
+                    "key_points": [],
+                }
+
+        class _Embedder:
+            dim = 2
+
+            def embed_documents(self, texts):
+                return [[1.0, 0.0] for _ in texts]
+
+            def embed(self, query):
+                return [1.0, 0.0]
+
+        memory_manager = MemoryManager(path=os.path.join(tempfile.gettempdir(), "rag_pipeline_test_memories.json"))
+        embedder = _Embedder()
+        vector_store = VectorStore(embedding_provider=embedder, dim=embedder.dim)
+        rag_tool = __import__('tools.rag_tool', fromlist=['RAGTool']).RAGTool(memory_manager=memory_manager, vector_store=vector_store)
+
+        graph = create_finance_graph(
+            parser_tool=_Parser(),
+            metric_tool=_Metric(),
+            risk_tool=_Risk(),
+            browser_tool=None,
+            report_tool=_Report(),
+            embedder=embedder,
+            rag_tool=rag_tool,
+        )
+
+        result = asyncio.run(graph.ainvoke(
+            {"input_file": "demo.pdf", "thread_id": "rag-pipeline-test"},
+            config={"configurable": {"thread_id": "rag-pipeline-test"}},
+        ))
+
+        self.assertIn("report", result)
+        self.assertGreater(len(vector_store._metadatas), 0)
 
 
 if __name__ == "__main__":

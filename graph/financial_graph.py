@@ -25,8 +25,12 @@ except Exception:
                 def __init__(self, nodes):
                     self._nodes = nodes
 
-                async def ainvoke(self, init_state):
+                async def ainvoke(self, init_state, config=None):
                     state = dict(init_state or {})
+                    cfg = config or {}
+                    configurable = cfg.get('configurable') if isinstance(cfg, dict) else {}
+                    thread_id = configurable.get('thread_id') or state.get('thread_id') or 'default'
+                    state['thread_id'] = str(thread_id)
                     for _name, fn in self._nodes:
                         try:
                             res = fn(state)
@@ -47,6 +51,7 @@ from state.agent_state import FinanceState
 
 from .nodes import (
     create_parser_node,
+    create_rag_index_node,
     create_metric_node,
     create_risk_node,
     create_browser_node,
@@ -67,6 +72,7 @@ def create_finance_graph(
     llm_provider=None,
     embedder=None,
     rag_tool=None,
+    checkpointer=None,
 ):
 
     # 1. Create graph builder
@@ -96,7 +102,13 @@ def create_finance_graph(
     # allow caller to supply an embedder; otherwise create a default (locale-aware)
     if embedder is None:
         embedder = BGEEmbeddingProvider(locale=os.getenv("EMBED_LOCALE", "en"), use_fp16=True)
-    vector_store = VectorStore(embedding_provider=embedder, dim=getattr(embedder, 'dim', 128))
+
+    vector_store = None
+    if rag_tool is not None and getattr(rag_tool, "vector_store", None) is not None:
+        vector_store = rag_tool.vector_store
+    else:
+        vector_store = VectorStore(embedding_provider=embedder, dim=getattr(embedder, 'dim', 128))
+
     if rag_tool is None:
         rag_tool_internal = RAGTool(
             memory_manager=memory_manager,
@@ -111,6 +123,10 @@ def create_finance_graph(
     parser_node = create_parser_node(
         parser_tool,
         evidence_builder=evidence_builder,
+    )
+
+    rag_index_node = create_rag_index_node(
+        vector_store=vector_store,
     )
 
     metric_node = create_metric_node(
@@ -149,6 +165,11 @@ def create_finance_graph(
     builder.add_node(
         "parser",
         parser_node
+    )
+
+    builder.add_node(
+        "rag_index",
+        rag_index_node
     )
 
     builder.add_node(
@@ -211,83 +232,20 @@ def create_finance_graph(
         enable_browser=browser_tool is not None
     )
 
-    # Register LangGraph native checkpointer (Sqlite) if available.
-    # This uses builder-level registration when supported by the installed
-    # LangGraph version. This is best-effort and will silently skip if the
-    # runtime does not provide the expected classes / APIs.
-    ckpt_path = None
     try:
-        from pathlib import Path
-
-        db_path = Path('workspace/cache/langgraph_checkpoint.sqlite')
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # attempt to import common Sqlite checkpointer classes
-        saver_cls = None
-        candidates = [
-            ('langgraph.pregel.checkpoint', 'SqliteSaver'),
-            ('langgraph.checkpoint', 'SqliteSaver'),
-            ('langgraph.pregel.checkpointer', 'SqliteCheckpointer'),
-            ('langgraph.checkpointer', 'SqliteCheckpointer'),
-            ('langgraph.pregel.persist', 'SqliteSaver'),
-            ('langgraph.persist.sqlite', 'SqliteSaver'),
-        ]
-
-        for module_path, cls_name in candidates:
-            try:
-                mod = __import__(module_path, fromlist=[cls_name])
-                saver_cls = getattr(mod, cls_name)
-                break
-            except Exception:
-                saver_cls = None
-
-        if saver_cls is not None:
-            saver = saver_cls(str(db_path))
-
-            # Prefer builder-level registration APIs if available
-            registered = False
-            for reg in ('set_checkpointer', 'register_checkpointer', 'attach_checkpointer', 'register', 'add_checkpointer'):
-                if hasattr(builder, reg):
-                    try:
-                        getattr(builder, reg)(saver)
-                        ckpt_path = str(db_path)
-                        registered = True
-                        break
-                    except Exception:
-                        pass
-
-            # Fallback to saver attaching methods if builder has no registration API
-            if not registered:
-                for method in ('attach', 'register', 'save', 'checkpoint', 'save_builder', 'save_graph'):
-                    if hasattr(saver, method):
-                        try:
-                            getattr(saver, method)(builder)
-                            ckpt_path = str(db_path)
-                            registered = True
-                            break
-                        except Exception:
-                            pass
-
-        # if saver_cls is None or registration failed, do not raise; checkpointing is optional
+        if checkpointer is not None:
+            graph = builder.compile(checkpointer=checkpointer)
+        else:
+            graph = builder.compile()
     except Exception:
-        ckpt_path = None
+        graph = builder.compile()
 
-
-    # 7. Compile graph
-
-    graph = builder.compile()
 
     # attach internal components for external access (e.g., main/debug)
     try:
         setattr(graph, 'rag_tool_internal', rag_tool_internal)
         setattr(graph, 'evidence_store', evidence_store)
         setattr(graph, 'evidence_builder', evidence_builder)
-        # attach checkpoint path if saved earlier
-        try:
-            if 'ckpt_path' in locals() and ckpt_path:
-                setattr(graph, 'langgraph_checkpoint', ckpt_path)
-        except Exception:
-            pass
     except Exception:
         pass
 

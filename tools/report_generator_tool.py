@@ -229,7 +229,6 @@ class ReportGeneratorTool(BaseTool):
                 "Missing risk_score"
             )
 
-
         if metrics.get("revenue") is None:
             # In offline/demo mode with a stub LLM, allow missing revenue
             llm = getattr(self, '_llm', None)
@@ -239,6 +238,47 @@ class ReportGeneratorTool(BaseTool):
             raise ValueError(
                 "Invalid metrics: revenue missing"
             )
+
+    def _metric_value(self, metric):
+        if metric is None:
+            return None
+        if isinstance(metric, dict):
+            return metric.get("value")
+        return metric
+
+    def _metric_blocking_reason(self, metrics, report):
+        reasons = []
+        if self._metric_value(metrics.get("debt_ratio")) is None and self._metric_value(report.get("debt_ratio")) is not None:
+            reasons.append("generated metric conflicts with extraction: debt_ratio")
+        if self._metric_value(metrics.get("debt_ratio")) is None:
+            reasons.append("missing debt_ratio")
+        if self._metric_value(metrics.get("revenue")) is None and self._metric_value(report.get("revenue")) is not None:
+            reasons.append("generated revenue conflicts with extraction")
+        return reasons
+
+    def _sanitize_report(self, report, metrics):
+        if not isinstance(report, dict):
+            return report
+
+        cleaned = dict(report)
+        financial_keys = {"revenue", "net_profit", "debt_ratio", "cash_flow", "cash_flow_ratio", "net_profit_yoy"}
+
+        for key in list(cleaned.keys()):
+            if key in {"summary", "risk_assessment", "recommendation", "key_points", "external_evidence", "meta", "warnings", "needs_review", "blocking_reason", "consistency"}:
+                continue
+            if key.lower() in financial_keys:
+                metric_value = metrics.get(key)
+                if metric_value is None:
+                    cleaned.pop(key, None)
+                continue
+            if key in metrics:
+                continue
+            if isinstance(cleaned.get(key), (int, float)):
+                cleaned.pop(key, None)
+
+        if metrics.get("debt_ratio") is None:
+            cleaned.pop("debt_ratio", None)
+        return cleaned
 
 
 
@@ -257,16 +297,19 @@ class ReportGeneratorTool(BaseTool):
         external_citations=None,
     ):
 
+        try:
+            json_str = self._extract_json(
+                raw_output
+            )
 
-        json_str = self._extract_json(
-            raw_output
-        )
+            parsed = json.loads(
+                json_str
+            )
+        except Exception:
+            parsed = self._build_fallback_report(metrics, risk)
+            parsed.setdefault("warnings", []).append("report_llm_json_parse_failed")
 
-
-        parsed = json.loads(
-            json_str
-        )
-
+        parsed = self._sanitize_report(parsed, metrics)
 
         return self._post_validate(
             parsed,
@@ -285,6 +328,16 @@ class ReportGeneratorTool(BaseTool):
         text
     ):
 
+        if text is None:
+            raise ValueError("No JSON found in LLM output")
+
+        text = str(text)
+        text = (
+            text
+            .replace("```json", "")
+            .replace("```", "")
+        )
+
 
         match = re.search(
             r"\{.*\}",
@@ -300,6 +353,52 @@ class ReportGeneratorTool(BaseTool):
 
 
         return match.group(0)
+
+
+    def _build_fallback_report(self, metrics, risk):
+        score = risk.get("risk_score")
+        level = risk.get("risk_level")
+        flags = risk.get("risk_flags") or []
+
+        points = []
+        for metric_name in ("revenue", "net_profit", "debt_ratio", "cash_flow"):
+            value = metrics.get(metric_name)
+            if value is None:
+                continue
+            points.append(
+                {
+                    "claim": f"{metric_name} observed at {value}",
+                    "evidence": {
+                        "metric": metric_name,
+                        "value": value,
+                        "source": "parsed_metrics",
+                    },
+                }
+            )
+
+        if flags:
+            points.append(
+                {
+                    "claim": "deterministic risk flags were triggered",
+                    "evidence": {
+                        "metric": "risk_flags",
+                        "value": flags,
+                        "source": "risk_engine",
+                    },
+                }
+            )
+
+        summary = (
+            "Fallback report generated because LLM output was not valid JSON. "
+            f"risk_score={score}, risk_level={level}."
+        )
+
+        return {
+            "summary": summary,
+            "risk_assessment": f"Risk level is {level} with flags: {flags}",
+            "recommendation": "HOLD",
+            "key_points": points,
+        }
 
 
 
@@ -318,19 +417,24 @@ class ReportGeneratorTool(BaseTool):
         external_citations=None,
     ):
 
+        blocking_reasons = self._metric_blocking_reason(metrics, report)
+        if blocking_reasons:
+            report["needs_review"] = True
+            report["blocking_reason"] = blocking_reasons
+            report["recommendation"] = "REVIEW"
+            report["risk_assessment"] = (report.get("risk_assessment") or "") + " Review required due to missing or conflicting financial metrics."
 
         expected = self._derive_recommendation(
             metrics,
             risk
         )
 
+        # Do not generate a final investment recommendation when review is required.
+        if report.get("needs_review"):
+            report["recommendation"] = "REVIEW"
+        else:
+            report["recommendation"] = expected
 
-        # 强制覆盖推荐结果
-        report["recommendation"] = expected
-
-
-
-        # 保存外部证据信息（可能包含 summary 或 evidence ids）
         external_evidence = {
             "source": "external",
             "available": bool(browser_result or external_summary or external_evidence_ids or external_citations),
@@ -371,19 +475,19 @@ class ReportGeneratorTool(BaseTool):
                 report.setdefault("warnings", []).append("external_evidence_missing_citations")
                 # continue without raising; caller can inspect report['warnings']
 
-        # include a helpful meta flag indicating whether external citations were integrated
         meta = {
             "engine": self.name,
             "risk_score": risk.get("risk_score"),
-            # default validation mode
             "validation": "strict",
-            "external_citation_included": has_evidence_ids or bool(external_evidence.get("data", {}).get("external_summary"))
+            "external_citation_included": has_evidence_ids or bool(external_evidence.get("data", {}).get("external_summary")),
+            "needs_review": bool(report.get("needs_review")),
+            "blocking_reason": report.get("blocking_reason", []),
         }
-
-        # if the LLM produced warnings, surface them in meta.validation and meta.warnings
         if report.get("warnings"):
             meta["validation"] = "strict_with_warnings"
             meta["warnings"] = report.get("warnings")
+        if report.get("needs_review"):
+            meta["validation"] = "failed"
 
         return {
             **report,
@@ -410,15 +514,11 @@ class ReportGeneratorTool(BaseTool):
         )
 
 
-        profit = metrics.get(
-            "net_profit"
-        )
+        profit = self._metric_value(metrics.get("net_profit"))
+        cash = self._metric_value(metrics.get("cash_flow"))
 
-
-        cash = metrics.get(
-            "cash_flow"
-        )
-
+        if metrics.get("debt_ratio") is None:
+            return "REVIEW"
 
         if (
             score < 0.3
@@ -429,9 +529,7 @@ class ReportGeneratorTool(BaseTool):
         ):
             return "BUY"
 
-
         if score < 0.7:
             return "HOLD"
-
 
         return "SELL"

@@ -1,36 +1,50 @@
 # Financial Report Analysis Skill
 
-一个基于 LangGraph 构建的“证据优先”金融分析 Skill：支持 PDF/XLSX 文档解析，提取可落地的结构化指标，执行确定性风险评分，生成结构化报告，并在报告后执行 reflection 校验。
+一个面向本地运行的“证据优先”财务分析工作流，支持 PDF/XLSX 文档解析、结构化指标抽取、确定性风险评分、生成报告，以及在报告之后执行 reflection 校验。
 
-支持可选的 MCP 外部搜索能力，默认关闭。
-
----
-
-## 功能特点
-
-- 支持 PDF 和 Excel（`.xlsx`）财务文档解析
-- 支持基于版面信息的 PDF 解析，输出 `raw_text`（审计）、`cleaned_text`（切块/RAG）和 `table_regions`（二维 JSON 表格）
-- 自动提取收入、净利润、资产负债率、现金流等关键财务指标
-- 当存在表格证据时，指标抽取优先使用 `table_regions` 的结构化数据
-- 提供可解释的财务风险分析
-- 自动生成结构化财务分析报告
-- 报告生成后执行 reflection 校验（完整性/一致性/缺失字段/冲突检查）
-- 支持统一的多格式文档解析
-- 基于 LangGraph 构建工作流
-- 支持可选 MCP 外部搜索（默认关闭）
+这个仓库目前更像是一个本地研究/自动化技能，而不是一个容器化服务应用。因此在当前状态下，不需要额外编写 Dockerfile 或 CI 配置，除非后续准备做线上部署或发布流程。
 
 ---
 
-## 支持的文档类型
+## 它现在做了什么
 
-包括但不限于：
+- 解析 PDF 和 Excel 财务报表
+- 保留 `raw_text`、`cleaned_text`、`table_regions` 等证据字段
+- 抽取结构化指标，如 `company_name`、`revenue`、`net_profit`、`debt_ratio`、`cash_flow`
+- 当表格证据存在时，优先使用 `table_regions` 中的结构化数据
+- 执行确定性的风险评分，并在关键字段缺失时触发 review gate
+- 构建本地向量索引，基于文本 chunk 和表格 chunk 进行检索
+- 将 vector 数据落盘到 `workspace/cache/` 中
+- 按 `thread_id` 创建独立的 LangGraph SQLite checkpoint
+- 运行反思式校验，检查完整性、一致性、缺失字段和潜在冲突
+- 外部证据仅作支持，不覆盖内部指标和风险判断
 
-- 年报（Annual Report）
-- 季报（Quarterly Report）
-- 财报发布（Earnings Release）
-- 财务报表（Financial Statement）
-- 投资者演示文稿（Investor Presentation）
-- Excel 财务数据表
+---
+
+## 当前架构
+
+```text
+PDF/XLSX -> parser -> rag_index -> metric extraction -> risk scoring -> report -> reflection validation
+```
+
+关键说明：
+
+- 当前实现是确定性状态图工作流，而不是单纯的 ReAct 或严格 plan-and-execute 代理。
+- `rag_index` 是正常执行链路的一部分，会把文档分块写入 vector store。
+- vector 文件默认写入：`workspace/cache/vector_index.npz` 和 `workspace/cache/vector_index.npz.meta.json`。
+- checkpoint 按 `thread_id` 区分，避免不同任务串扰。
+- 缺失关键字段（例如 `debt_ratio`）会保留为 `None`，不会被伪造成默认值。
+
+---
+
+## 支持的输入
+
+- 年报
+- 季报
+- 财报发布稿
+- 财务报表
+- 投资者演示文稿
+- Excel 财务表格
 
 支持格式：
 
@@ -39,28 +53,7 @@
 
 ---
 
-## 项目结构
-
-```
-financial-report-analysis-skill/
-
-├── config/
-├── examples/
-├── graph/
-├── mcp_local/
-├── providers/
-├── skills/
-├── state/
-├── tools/
-├── validators/
-├── workflow/
-├── main.py
-└── requirements.txt
-```
-
----
-
-## 安装
+## 本地运行
 
 安装依赖：
 
@@ -68,160 +61,95 @@ financial-report-analysis-skill/
 pip install -r requirements.txt
 ```
 
----
-
-## 配置
-
-### 配置 DeepSeek API
-
-Linux/macOS：
-
-```bash
-export DEEPSEEK_API_KEY="your_api_key"
-```
-
-Windows PowerShell：
-
-```powershell
-$env:DEEPSEEK_API_KEY="your_api_key"
-```
-
----
-
-### （可选）开启 MCP 外部搜索
-
-默认情况下，外部搜索关闭。
-
-如需启用 Tavily 搜索，请配置：
-
-Linux/macOS：
-
-```bash
-export ENABLE_TAVILY=true
-export TAVILY_API_KEY="your_api_key"
-```
-
-Windows PowerShell：
-
-```powershell
-$env:ENABLE_TAVILY="true"
-$env:TAVILY_API_KEY="your_api_key"
-```
-
-开启后，系统可能向搜索服务发送以下信息：
-
-- 公司名称
-- 风险评分
-- 风险因素
-- 财务搜索关键词
-
-**不会发送：**
-
-- 原始 PDF 文件
-- 原始 Excel 文件
-- 完整财务报告内容
-
----
-
-## 使用方法
-
-在项目根目录运行（推荐命令行参数方式）：
+从项目根目录运行：
 
 ```bash
 python main.py --input-file "examples/your_report.pdf"
 ```
 
-也可通过环境变量传入输入文件：
-
-```bash
-export INPUT_FILE="examples/your_report.pdf"
-python main.py
-```
-
-Windows PowerShell：
+PowerShell：
 
 ```powershell
-$env:INPUT_FILE="examples\your_report.pdf"
+python main.py --input-file "examples\your_report.pdf"
+```
+
+可选环境变量：
+
+```powershell
+$env:EMBED_LOCALE = "zh"
+$env:INPUT_FILE = "examples\your_report.pdf"
 python main.py
 ```
 
-交互式兜底：
+---
 
-```bash
-python main.py
+## 可选外部搜索
+
+默认关闭外部搜索。只有确实需要时才开启 Tavily：
+
+```powershell
+$env:ENABLE_TAVILY = "true"
+$env:TAVILY_API_KEY = "your_api_key"
+python main.py --input-file "examples\your_report.pdf"
 ```
 
-如果未提供 `--input-file` 且未设置 `INPUT_FILE`，在可交互终端中程序会提示输入文件路径。
-
-默认情况下：
-
-- 不开启外部搜索
-- 仅基于本地文档完成分析
-- 报告输出后会打印 reflection 校验摘要
-
-### Agent 调用流程
-
-- 解析输入路径（`--input-file` -> `INPUT_FILE` -> 交互提示）
-- 文档解析输出 `text/raw_text/cleaned_text/table_regions`
-- 构建初始 RAG 索引（文本 chunk + 表格 chunk，`chunk_type: table`）
-- 执行图流程并输出 report + reflection 结果
+外部搜索仅作为辅助证据，不能覆盖真实抽取指标和确定性风险值。
 
 ---
 
-## 局限性
+## 嵌入与向量缓存
 
-- 支持中英文流程，但效果仍依赖文档版面质量与 OCR 质量。
-- 分析质量依赖于文档排版和 OCR 质量。
-- 文档解析错误会影响最终分析结果。
-- 生成结果仅供参考，不构成投资建议。
+- BGE embedding 由 `providers/embedding_provider_bge.py` 提供。
+- `EMBED_LOCALE` 可选择 `en` 或 `zh`。
+- `EMBED_MODEL` 可覆盖默认模型选择。
+- 若当前环境没有 `FlagEmbedding`，系统会回退到本地确定性 stub embedder。
+- vector 索引会写入 `workspace/cache/` 目录，便于本地检索与调试。
 
 ---
 
-## 说明
+## Checkpoint
 
-- PDF 解析优先使用 PyMuPDF 的版面感知能力，不可用时回退到 `pdfplumber`/`PyPDF2`。
-- Excel 解析依赖 `openpyxl`。
-- 所有 API Key 建议通过环境变量配置。
-- 外部搜索功能默认关闭，需要用户主动开启。
-- 对于 PDF，解析输出包含 `text`、`raw_text`、`cleaned_text`、`tables`、`table_regions`。
-- `table_regions` 保留二维 `rows` 与 `page/bbox` 信息，例如 `{ "page": 10, "bbox": [x0, y0, x1, y1], "rows": [["Metric", "2025"], ["Revenue", "1000"]] }`。
-
-### 执行边界
-
-- 财务指标与 `risk_score` 视为内部真值（ground truth）。
-- 外部证据（RAG/MCP/Web）仅作辅助，不可覆盖核心数值指标。
-- 最终 `BUY/HOLD/SELL` 推荐由代码规则强制约束，不由 LLM 自由决定。
-
-### 当前流程
+每次图执行可以按 `thread_id` 生成 SQLite 断点文件，例如：
 
 ```text
-PDF/XLSX -> parser -> 指标抽取 -> 风险评分 -> [可选 Tavily MCP 外部搜索] -> report -> reflection 校验
+workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
 ```
+
+这是本地调试与并发隔离手段。不同线程会写入不同 checkpoint 文件，避免相互串扰。
 
 ---
 
-### 向量与嵌入说明
+## 当前状态说明
 
-- 本项目支持基于 BGE 的嵌入（位于 `providers/embedding_provider_bge.py`）。可通过环境变量 `EMBED_LOCALE` 指定 `en` 或 `zh`，或通过 `EMBED_MODEL` 指定具体模型。 
-- 当运行环境不可用 BGE 依赖时，系统会回退到本地确定性嵌入 stub 以便离线演示。
-- 本地 `VectorStore` 在检测到 `faiss` 安装时优先使用 FAISS 进行高效相似度检索；否则使用内存中的 NumPy 暴力检索。若需启用 FAISS，请在环境中安装（例如 `pip install faiss-cpu`）。
-- 初始 RAG 索引同时包含文本 chunk 与表格 chunk（`chunk_type: table`），便于按页回溯表格证据。
+这个仓库当前是本地 Python 工作流，不是容器化服务程序，所以：
 
----
+- 不需要 Dockerfile。
+- 不需要 CI 配置。
+- 只有当你准备做线上部署、自动发布、托管服务或持续集成检查时，才需要补 Docker / CI。
 
-## 检查点（Checkpoint）
-
-在图构建阶段，系统会写入一个轻量级的 LangGraph 检查点文件（记录节点名称和边），用于调试和检查：
-
-```
-workspace/cache/langgraph_checkpoint.sqlite
-```
-
-该文件仅用于检查和可重复性验证，不会序列化函数调用体。
+这能让项目更轻、更直接地保持调试和迭代效率。
 
 ---
 
-## 架构图
+## 边界与限制
 
-查看系统架构图： [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 缺失关键字段会保留为 `None`，而不是偷偷填默认值。
+- 当字段缺失、跨层冲突或证据弱时会触发 `needs_review`。
+- 最终推荐结果由代码规则约束，而不是由模型随意输出。
+- 生成结果只用于信息参考，不构成投资建议或审计意见。
+
+---
+
+## 运行产物位置
+
+```text
+workspace/
+  cache/
+    evidence_store.json
+    vector_index.npz
+    vector_index.npz.meta.json
+    langgraph_checkpoint_<thread_id>.sqlite
+```
+
+这些都是本地调试与检索用的产物，可以按需清理。
 

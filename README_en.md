@@ -1,64 +1,59 @@
 # Financial Report Analysis Skill
 
-An evidence-first financial analysis skill built with LangGraph for PDF/XLSX documents. It extracts grounded metrics, computes deterministic risk scores, generates structured reports, and then runs reflection-based post-report validation. RAG/MCP context is optional and treated as supporting evidence only.
+A local, evidence-first financial analysis workflow for PDF/XLSX inputs. It parses documents, extracts grounded metrics, computes deterministic risk scores, generates structured reports, runs reflection validation after report generation, and persists local RAG artifacts to the workspace cache.
+
+This repository is a research/local-automation skill rather than a packaged SaaS service. It does not currently require Docker or a CI pipeline for normal local use.
 
 ---
 
-## Features
+## What it does
 
-- Parse financial documents from PDF and Excel (`.xlsx`) files
-- Layout-aware PDF parsing with `raw_text` (audit), `cleaned_text` (for chunking/RAG), and `table_regions` (2D JSON table rows)
-- Extract key financial metrics such as revenue, net profit, debt ratio, and cash flow
-- Prioritize structured extraction from `table_regions` when table evidence is available
-- Perform explainable financial risk analysis
-- Generate structured financial analysis reports
-- Run post-report reflection validation (completeness, consistency, missing fields, conflict checks)
-- Unified document parser for multi-format input
-- LangGraph-based workflow orchestration
-- Optional MCP external search support (disabled by default)
+- Parses PDF and Excel financial reports
+- Preserves `raw_text`, `cleaned_text`, and `table_regions` for traceability
+- Extracts normalized metrics such as `company_name`, `revenue`, `net_profit`, `debt_ratio`, and `cash_flow`
+- Prioritizes table-based extraction from `table_regions` when structured evidence is present
+- Runs deterministic risk scoring with explicit validation and review gates
+- Builds a local vector index from chunked text and table payloads
+- Persists vector metadata under `workspace/cache/`
+- Stores per-thread LangGraph checkpoints under `workspace/cache/`
+- Uses reflection to evaluate completeness, consistency, and missing-field issues after report generation
+- Treats external evidence as supporting-only and never lets it overwrite core metrics or risk values
 
 ---
 
-## Supported Inputs
+## Current architecture
 
-Supported document types include:
+```text
+PDF/XLSX -> parser -> rag_index -> metric extraction -> risk scoring -> report -> reflection validation
+```
 
-- Annual Reports
-- Quarterly Reports
-- Earnings Releases
-- Financial Statements
-- Investor Presentations
-- Excel-based Financial Tables
+Key implementation notes:
 
-Supported file formats:
+- The graph is a deterministic state workflow, not a pure ReAct loop and not a strict plan-and-execute agent.
+- `rag_index` is part of the normal execution path and writes document chunks to the vector store.
+- The vector store persists as `workspace/cache/vector_index.npz` and `workspace/cache/vector_index.npz.meta.json`.
+- Checkpoints are created per `thread_id` to avoid cross-task contamination.
+- Missing critical values such as `debt_ratio` remain `None` and trigger review instead of defaulting to synthetic numbers.
+
+---
+
+## Supported inputs
+
+- Annual reports
+- Quarterly reports
+- Earnings releases
+- Financial statements
+- Investor presentations
+- Excel tables with financial values
+
+Supported file types:
 
 - `.pdf`
 - `.xlsx`
 
 ---
 
-## Project Structure
-
-```
-financial-report-analysis-skill/
-
-├── config/
-├── examples/
-├── graph/
-├── mcp_local/
-├── providers/
-├── skills/
-├── state/
-├── tools/
-├── validators/
-├── workflow/
-├── main.py
-└── requirements.txt
-```
-
----
-
-## Installation
+## Local setup
 
 Install dependencies:
 
@@ -66,180 +61,96 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
----
-
-## Configuration
-
-### DeepSeek API
-
-Configure your DeepSeek API key through an environment variable.
-
-Linux/macOS:
-
-```bash
-export DEEPSEEK_API_KEY="your_api_key"
-```
-
-Windows PowerShell:
-
-```powershell
-$env:DEEPSEEK_API_KEY="your_api_key"
-```
-
----
-
-### Optional MCP External Search
-
-External search is disabled by default.
-
-To enable MCP-based Tavily search, configure:
-
-Linux/macOS:
-
-```bash
-export ENABLE_TAVILY=true
-export TAVILY_API_KEY="your_api_key"
-```
-
-Windows PowerShell:
-
-```powershell
-$env:ENABLE_TAVILY="true"
-$env:TAVILY_API_KEY="your_api_key"
-```
-
-When enabled, the Skill may send the following information to the configured search service:
-
-- Company name
-- Risk score
-- Financial risk factors
-- Financial search keywords
-
-The Skill does **not** upload:
-
-- Original PDF documents
-- Original Excel files
-- Complete document contents
-
----
-
-## Usage
-
-Run the Skill from the project root (recommended CLI mode):
+Run the skill from the repo root:
 
 ```bash
 python main.py --input-file "examples/your_report.pdf"
 ```
 
-Alternative input via environment variable:
-
-```bash
-export INPUT_FILE="examples/your_report.pdf"
-python main.py
-```
-
-Windows PowerShell:
+PowerShell:
 
 ```powershell
-$env:INPUT_FILE="examples\your_report.pdf"
+python main.py --input-file "examples\your_report.pdf"
+```
+
+Optional environment variables:
+
+```powershell
+$env:EMBED_LOCALE = "zh"
+$env:INPUT_FILE = "examples\your_report.pdf"
 python main.py
 ```
 
-Interactive fallback:
+---
 
-```bash
-python main.py
+## Optional external search
+
+External search is disabled by default.
+
+Enable Tavily only when needed:
+
+```powershell
+$env:ENABLE_TAVILY = "true"
+$env:TAVILY_API_KEY = "your_api_key"
+python main.py --input-file "examples\your_report.pdf"
 ```
 
-If no `--input-file` and no `INPUT_FILE` are provided, the program prompts for a path in interactive terminals.
-
-By default:
-
-- External search is disabled.
-- Financial reports are generated using local document analysis only.
-- Reflection validation summary is printed after report generation.
-
-### Agent Invocation Flow
-
-- Resolve input path (`--input-file` -> `INPUT_FILE` -> interactive prompt)
-- Parse document into `text/raw_text/cleaned_text/table_regions`
-- Build initial RAG index from text chunks plus table chunks (`chunk_type: table`)
-- Execute graph pipeline and return report + reflection outputs
+The external layer is supporting evidence only; it does not override extracted metrics or the deterministic risk score.
 
 ---
 
-## Limitations
+## Embeddings and vector cache
 
-- Supports both English and Chinese workflows; quality still depends on document layout/OCR quality.
-- Analysis quality depends on document formatting and OCR quality.
-- Incorrect parsing may affect extracted metrics.
-- Generated reports are intended for informational purposes only.
-
----
-
-## Notes
-
-- PDF parsing is layout-aware with PyMuPDF when available, and falls back to `pdfplumber`/`PyPDF2`.
-- Excel parsing requires `openpyxl`.
-- API keys should always be configured using environment variables.
-- Optional external search is disabled by default.
-- For PDF documents, parser output includes `text`, `raw_text`, `cleaned_text`, `tables`, and `table_regions`.
-- `table_regions` keeps 2D rows with page/bbox metadata, for example `{ "page": 10, "bbox": [x0, y0, x1, y1], "rows": [["Metric", "2025"], ["Revenue", "1000"]] }`.
-
-### Execution Boundaries
-
-- Financial metrics and `risk_score` are treated as internal ground truth.
-- External evidence (RAG/MCP/Web) is supporting context and must not override core numeric metrics.
-- Recommendation is rule-enforced in code (`BUY`/`HOLD`/`SELL`) rather than left to unconstrained LLM output.
-
-### Current Workflow
-
-```text
-PDF/XLSX -> parser -> metric extraction -> risk scoring -> [Tavily MCP external search, if enabled] -> report -> reflection validation
-```
-
----
-
-### Embeddings and Vector Store
-
-- This project supports BGE-based embeddings via `providers/embedding_provider_bge.py`. You can select the embedding locale via the environment variable `EMBED_LOCALE` (`en` or `zh`) or set a specific model with `EMBED_MODEL`.
-- By default the repo falls back to a deterministic local stub embedder when BGE runtime is not available.
-- The local `VectorStore` uses FAISS for efficient similarity search if `faiss` is installed; otherwise it falls back to an in-memory NumPy brute-force search. To enable FAISS install it in your environment (for example `pip install faiss-cpu`).
-- Initial RAG indexing now includes both text chunks and structured table chunks (`chunk_type: table`) so table page context can be retrieved and cited.
+- BGE embeddings are supported via `providers/embedding_provider_bge.py`.
+- `EMBED_LOCALE` selects `en` or `zh` when a locale-specific model is needed.
+- `EMBED_MODEL` can override the locale-specific default.
+- If the runtime does not have `FlagEmbedding`, the project falls back to a deterministic local stub embedder.
+- The vector store is persisted under `workspace/cache/` and is designed for local retrieval and debugging.
 
 ---
 
 ## Checkpointing
 
-During graph construction the skill writes a lightweight LangGraph checkpoint that records node names and edges for inspection. The file is written to:
+Each graph run can create a SQLite checkpoint keyed by `thread_id`, for example:
 
-```
-workspace/cache/langgraph_checkpoint.sqlite
+```text
+workspace/cache/langgraph_checkpoint_<thread_id>.sqlite
 ```
 
-This checkpoint is intended for debugging and reproducibility inspection only; it does not serialize node callables.
+This is a local debugging and isolation mechanism. Different threads write separate checkpoint files and are not intended to be shared across tasks.
 
 ---
 
-## Architecture
+## Operational status
 
-See the architecture diagram: [ARCHITECTURE](docs/ARCHITECTURE.md)
+This repo is currently meant to run as a local Python workflow, not as a containerized microservice. As a result:
+
+- No Dockerfile is required for the current local-research workflow.
+- No CI pipeline is required unless you later add automated release packaging, remote deployment, or a hosted service layer.
+
+This keeps the project lightweight and easier to debug while the skill is still evolving.
 
 ---
 
-## Preparing a Release (safe cleanup)
+## Notes and boundaries
 
-Before publishing to GitHub you may want to remove runtime caches and large local artifacts. A safe dry-run script is provided:
+- Missing critical fields remain `None` instead of being silently defaulted.
+- `needs_review` is raised when critical metrics are absent or inconsistent.
+- Final recommendation is enforced by logic, not left unconstrained to model output.
+- Generated analyses are informational only and not investment or audit advice.
 
-```bash
-python scripts/prepare_release.py
+---
+
+## Runtime artifact locations
+
+```text
+workspace/
+  cache/
+    evidence_store.json
+    vector_index.npz
+    vector_index.npz.meta.json
+    langgraph_checkpoint_<thread_id>.sqlite
 ```
 
-To actually delete the suggested files, run:
-
-```bash
-python scripts/prepare_release.py --apply
-```
-
-The script will list candidate paths (dry-run) and ask for confirmation before deleting when `--apply` is used.
+These files are local artifacts for debugging and retrieval; they can be cleaned manually if desired.
 
