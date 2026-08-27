@@ -1,7 +1,7 @@
 ---
 name: financial-report-analysis-skill
 description: "Evidence-first financial analysis skill for PDF/XLSX: parse documents, extract grounded metrics, compute deterministic risk scores, generate structured reports, run post-report reflection validation, and maintain local RAG/vector artifacts under the workspace cache. This is a local workflow-first repository; Docker and CI are not required unless a production deployment step is added."
-version: 1.2.3
+version: 1.2.5
 author: LLLLLLL
 keywords: [financial, parsing, RAG, LangGraph, report, evidence, imputation, reflection, local-workflow]
 inputs:

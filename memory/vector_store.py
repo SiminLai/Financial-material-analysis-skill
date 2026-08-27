@@ -94,8 +94,8 @@ class VectorStore:
             meta_path = self.index_path + ".meta.json"
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(self._metadatas, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[VectorStore] Failed to save index to {self.index_path}: {type(e).__name__}: {e}")
 
     def load(self):
         try:
@@ -106,5 +106,5 @@ class VectorStore:
                 with open(meta_path, "r", encoding="utf-8") as f:
                     self._metadatas = json.load(f)
             self._build_index()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[VectorStore] Failed to load index from {self.index_path}: {type(e).__name__}: {e}")

@@ -38,8 +38,18 @@ class BGEEmbeddingProvider:
         self.batch_size = batch_size
         self.max_length = max_length
 
-
         if _HAS_FLAG and FlagModel is not None:
+
+            try:
+                import torch
+                cuda_available = torch.cuda.is_available()
+            except Exception:
+                cuda_available = False
+
+            if use_fp16 and not cuda_available:
+                print(">>> No CUDA GPU detected: disabling fp16 (fp16 gives no "
+                      "speedup on CPU and can make encoding slower).")
+                use_fp16 = False
 
             print(">>> Creating FlagModel...")
 
@@ -54,8 +64,13 @@ class BGEEmbeddingProvider:
 
             print(">>> BGE EMBEDDING DIM:", self.dim)
 
+            self.is_stub = False
+
         else:
-            print(">>> Using fallback embedding")
+            print(">>> WARNING: FlagEmbedding is not installed. Falling back to a "
+                  "NON-SEMANTIC hash-based stub embedder. Chunks will still be "
+                  "written to the vector store, but similarity search results will "
+                  "be meaningless until FlagEmbedding (see requirements.txt) is installed.")
 
             class _LocalStubEmbedder:
                 def __init__(self, dim: int = 128):
@@ -74,6 +89,7 @@ class BGEEmbeddingProvider:
 
             self._stub = _LocalStubEmbedder(dim=128)
             self.dim = getattr(self._stub, 'dim', 128)
+            self.is_stub = True
 
 
     def _get_embedding_dim(self) -> int:
@@ -123,11 +139,19 @@ class BGEEmbeddingProvider:
 
         if _HAS_FLAG and getattr(self, "model", None) is not None:
 
+            import time
+            start = time.time()
+            print(f">>> Embedding {len(texts)} chunks with real BGE model "
+                  f"(batch_size={self.batch_size}, max_length={self.max_length}); "
+                  "this can take a while on CPU...")
+
             vectors = self.model.encode_corpus(
                 texts,
                 batch_size=self.batch_size,
                 max_length=self.max_length,
             )
+
+            print(f">>> Finished embedding {len(texts)} chunks in {time.time() - start:.1f}s")
 
             return self._normalize(vectors)
 

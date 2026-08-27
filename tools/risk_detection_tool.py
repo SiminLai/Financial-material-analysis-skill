@@ -89,7 +89,7 @@ class RiskDetectionTool(BaseTool):
         llm_analysis = self._llm_reasoning(metrics, rule_flags, rule_score)
 
         # 3. final merge (controlled)
-        return self._merge(rule_score, rule_flags, llm_analysis)
+        return self._merge(rule_score, rule_flags, llm_analysis, metrics)
 
     # =========================
     # RULE ENGINE (TRUTH SOURCE)
@@ -249,7 +249,7 @@ Return ONLY JSON:
     # =========================
     # FINAL MERGE (CONTROLLED)
     # =========================
-    def _merge(self, score, flags, llm_analysis):
+    def _merge(self, score, flags, llm_analysis, metrics=None):
 
         if score < 0.3:
             level = "LOW"
@@ -258,17 +258,62 @@ Return ONLY JSON:
         else:
             level = "HIGH"
 
+        debt_ratio = self._metric_value((metrics or {}).get("debt_ratio"))
+        cash_flow_ratio = None
+        revenue = self._metric_value((metrics or {}).get("revenue"))
+        cash_flow = self._metric_value((metrics or {}).get("cash_flow"))
+        if revenue not in (None, 0) and cash_flow is not None:
+            try:
+                cash_flow_ratio = cash_flow / max(abs(revenue), 1.0)
+            except Exception:
+                cash_flow_ratio = None
+
+        net_profit_yoy = self._metric_value((metrics or {}).get("net_profit_yoy"))
+        if net_profit_yoy is not None and abs(net_profit_yoy) > 1:
+            net_profit_yoy = net_profit_yoy / 100.0
+
+        def _rule_reason(value, threshold, metric_name, trigger_message, non_trigger_message):
+            if value is None:
+                return f"{metric_name} is unavailable; threshold check could not be evaluated."
+            value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
+            if value <= threshold:
+                return f"{metric_name}={value_str} <= {threshold}; {trigger_message}"
+            return f"{metric_name}={value_str} > {threshold}; {non_trigger_message}"
+
+        rule_checks = {
+            "HIGH_LEVERAGE": {
+                "triggered": "HIGH_LEVERAGE" in flags,
+                "threshold": 0.70,
+                "value": debt_ratio,
+                "reason": _rule_reason(debt_ratio, 0.70, "debt_ratio", "HIGH_LEVERAGE triggers when debt_ratio exceeds 0.70.", "debt_ratio is below the HIGH_LEVERAGE threshold; HIGH_LEVERAGE is not triggered.") if debt_ratio is not None else "debt_ratio is unavailable; HIGH_LEVERAGE could not be evaluated.",
+            },
+            "LOW_CASH_FLOW": {
+                "triggered": "LOW_CASH_FLOW" in flags,
+                "threshold": 0.01,
+                "value": cash_flow_ratio,
+                "reason": _rule_reason(cash_flow_ratio, 0.01, "cash_flow_ratio", "LOW_CASH_FLOW triggers when cash_flow_ratio is at or below 0.01.", "cash_flow_ratio remains above 0.01; LOW_CASH_FLOW is not triggered.") if cash_flow_ratio is not None else "cash_flow_ratio is unavailable; LOW_CASH_FLOW could not be evaluated.",
+            },
+            "SHARP_PROFIT_DECLINE": {
+                "triggered": "SHARP_PROFIT_DECLINE" in flags,
+                "threshold": -0.50,
+                "value": net_profit_yoy,
+                "reason": _rule_reason(net_profit_yoy, -0.50, "net_profit_yoy", "SHARP_PROFIT_DECLINE triggers when net_profit_yoy is at or below -0.50.", "net_profit_yoy is above -0.50; SHARP_PROFIT_DECLINE is not triggered.") if net_profit_yoy is not None else "net_profit_yoy is unavailable; SHARP_PROFIT_DECLINE could not be evaluated.",
+            },
+        }
+
+        explanation = dict(llm_analysis or {})
+        explanation["rule_checks"] = rule_checks
+
         return {
             "risk_score": score,
             "risk_level": level,
             "risk_flags": flags,
-
-            "explanation": llm_analysis,
-
+            "explanation": explanation,
             "meta": {
                 "engine": "risk_v2.1",
                 "llm_role": "explanation_only",
-                "rule_source": "deterministic"
+                "rule_source": "deterministic",
+                "rule_checks": rule_checks,
             }
         }
 
@@ -322,32 +367,6 @@ Return ONLY JSON:
 
             return json.loads(match.group(0))
 
-        except:
+        except Exception:
             return {"risk_level_explanation": "invalid_llm_output", "key_drivers": []}
 
-    # =========================
-    # FINAL MERGE (CONTROLLED)
-    # =========================
-    def _merge(self, score, flags, llm_analysis):
-
-        if score < 0.3:
-            level = "LOW"
-        elif score < 0.7:
-            level = "MEDIUM"
-        else:
-            level = "HIGH"
-
-        return {
-            "risk_score": score,
-            "risk_level": level,
-            "risk_flags": flags,
-
-            "explanation": llm_analysis,
-
-            "meta": {
-                "engine": "risk_v2.1",
-                "llm_role": "explanation_only",
-                "rule_source": "deterministic"
-            }
-        }
-    

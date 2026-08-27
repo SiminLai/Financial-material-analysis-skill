@@ -57,9 +57,20 @@ def create_rag_index_node(vector_store):
 
         if docs:
             print(f"[RAG] generated {len(docs)} chunks for indexing into vector_store")
-            vector_store.add_documents(docs)
+            is_stub = bool(getattr(vector_store.embedder, "is_stub", False))
+            state["embedding_backend"] = "stub_non_semantic" if is_stub else "bge"
+            if is_stub:
+                print("[RAG] WARNING: indexing with a NON-SEMANTIC stub embedder; "
+                      "retrieval quality is degraded until FlagEmbedding is installed")
+            try:
+                vector_store.add_documents(docs)
+                state["rag_index_error"] = None
+            except Exception as e:
+                print(f"[RAG] vector_store.add_documents FAILED: {type(e).__name__}: {e}")
+                state["rag_index_error"] = f"{type(e).__name__}: {e}"
         else:
             print("[RAG] generated 0 chunks for indexing into vector_store")
+            state["rag_index_error"] = None
 
         state["rag_indexed_count"] = len(docs)
         return state
@@ -70,14 +81,24 @@ def create_rag_index_node(vector_store):
 def create_parser_node(parser_tool, evidence_builder=None):
 
     def parser_node(state):
+        import time
 
         file_path = state.get("input_file")
         if file_path is None:
             raise ValueError("state is missing required key: 'input_file'")
 
+        print(f"[Parser] parsing '{file_path}' (this can take tens of seconds for "
+              "large/table-heavy PDFs since no PyMuPDF fast-path is available)...")
+        t0 = time.time()
+
         document = parser_tool.invoke({
             "file_path": file_path
         })
+
+        elapsed = time.time() - t0
+        text_len = len(document.get("text", "") or "")
+        table_count = len(document.get("table_regions") or [])
+        print(f"[Parser] done in {elapsed:.1f}s: {text_len} chars, {table_count} table regions")
 
         state["document"] = document
 

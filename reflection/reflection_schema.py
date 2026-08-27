@@ -1,12 +1,14 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class ReflectionResult(BaseModel):
 
-    passed:bool
+    passed: bool
 
-    score:float
+    score: float
 
-    issues:list[str]
+    issues: list[str]
 
-    recommendation:str
+    recommendation: Literal["BUY", "HOLD", "SELL"]
