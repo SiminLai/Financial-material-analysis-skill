@@ -19,14 +19,17 @@ class LLMProvider(BaseProvider):
         model_name: str = "deepseek-chat",
         api_key: str | None = None,
         base_url: str = "https://api.deepseek.com",
+        demo: bool = False,
     ):
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
 
         # 优先使用传入的 api_key，其次读取环境变量
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-        self._use_stub = False
-        if not self.api_key:
+        self._use_stub = demo
+        if not self.api_key and not demo:
+            raise ValueError("DEEPSEEK_API_KEY required; use --demo explicitly for demonstration")
+        if demo:
             # allow running in offline/demo mode with a stub provider
             print("Warning: DEEPSEEK_API_KEY not set — using local stub LLM responses.")
             self._use_stub = True

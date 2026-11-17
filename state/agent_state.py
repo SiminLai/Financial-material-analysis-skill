@@ -15,3 +15,11 @@ class FinanceState(TypedDict, total=False):
 
     # 最终输出
     report: dict
+    facts: list
+    evidence: list
+    issues: list
+    validation: dict
+    reflection: dict
+    retrieval: dict
+    status: str
+    execution_mode: str

@@ -40,11 +40,9 @@ try:
 
             self._session_context = ClientSession(read, write)
 
-            await self._session_context.__aenter__()
+            self.session = await self._session_context.__aenter__()
 
-            await self._session_context.initialize()
-
-            self.session = self._session_context
+            await self.session.initialize()
 
             tools = await self.session.list_tools()
 

@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Tuple
 import json
 import re
+import math
 
 from .base_tool import BaseTool
 
@@ -79,7 +80,7 @@ class MetricExtractorTool(BaseTool):
         document = input_data
 
         table_metrics, table_sources, table_evidence = self._extract_from_table_regions(
-            document.get("table_regions") or []
+            document.get("table_regions") or document.get("tables") or []
         )
 
         prompt = self._build_prompt(
@@ -98,7 +99,7 @@ class MetricExtractorTool(BaseTool):
 
         # Prefer structured values extracted from table_regions over LLM text-only output.
         for key, value in table_metrics.items():
-            if value is not None:
+            if key in table_sources:
                 parsed[key] = value
 
         validated = self._normalize_metrics(parsed)
@@ -122,8 +123,8 @@ class MetricExtractorTool(BaseTool):
             if isinstance(raw_value, dict):
                 value = raw_value.get("value")
                 unit = raw_value.get("unit")
-                period = raw_value.get("period") or "FY2025"
-                source = raw_value.get("source") or "Financial Results"
+                period = raw_value.get("period")
+                source = raw_value.get("source")
                 normalized[key] = {
                     "value": value,
                     "unit": unit,
@@ -139,8 +140,8 @@ class MetricExtractorTool(BaseTool):
             normalized[key] = {
                 "value": numeric,
                 "unit": "unknown",
-                "period": "FY2025",
-                "source": "Financial Results",
+                "period": None,
+                "source": None,
             }
         if "company_name" in normalized:
             normalized["company_name"] = normalized.get("company_name") or None
@@ -225,34 +226,51 @@ OUTPUT FORMAT:
         table_evidence: List[Dict[str, Any]] = []
 
         label_map = {
-            "revenue": ["revenue", "sales", "营业收入", "营收", "收入"],
-            "net_profit": ["net profit", "net income", "profit", "净利润", "归母净利润"],
-            "cash_flow": ["cash flow", "operating cash flow", "经营活动现金流", "现金流"],
+            "revenue": ["revenue", "revenues", "net sales", "营业收入", "营收"],
+            "net_profit": ["net profit", "net income", "净利润"],
+            "cash_flow": ["net cash provided by operating activities", "net cash used in operating activities", "operating cash flow", "经营活动产生的现金流量净额"],
             "debt_ratio": ["debt ratio", "资产负债率", "liability ratio"],
+            "total_assets": ["total assets", "资产总计"],
+            "total_liabilities": ["total liabilities", "负债合计"],
         }
 
         for region in table_regions:
             page = region.get("page")
             rows = region.get("rows") or []
-            for row in rows:
+            for row_index, row in enumerate(rows):
                 if not isinstance(row, list) or not row:
                     continue
 
-                row_cells = [str(c or "").strip() for c in row]
+                row_cells = [str(c if c is not None else "").strip() for c in row]
                 row_label = row_cells[0].lower()
                 numeric_value = self._first_numeric(row_cells[1:])
 
                 for metric_key, aliases in label_map.items():
-                    if metrics.get(metric_key) is not None:
-                        continue
-                    if any(alias in row_label for alias in aliases):
+                    if row_label.rstrip(":： ") in aliases:
                         if numeric_value is None:
                             continue
-                        metrics[metric_key] = numeric_value
+                        numeric_cells = [(column, self._parse_numeric(cell)) for column, cell in enumerate(row_cells[1:], 1)]
+                        numeric_cells = [(column, value) for column, value in numeric_cells if value is not None]
+                        column = numeric_cells[0][0]
+                        raw_value = row_cells[column]
+                        if metric_key == "debt_ratio" and "%" in raw_value:
+                            numeric_value /= 100.0
+                        ambiguous = len(numeric_cells) != 1 or metric_key in metric_sources
+                        metrics[metric_key] = None if ambiguous else numeric_value
                         source = {
                             "source_type": "table",
                             "page": page,
                             "row": row_cells,
+                            "sheet": region.get("sheet"),
+                            "row_number": (region.get("row_numbers") or list(range(1, len(rows) + 1)))[row_index],
+                            "column_number": column + 1,
+                            "header": rows[0] if rows else [],
+                            "raw_value": raw_value, "value": numeric_value,
+                            "period": region.get("period"), "scope": region.get("scope"),
+                            "currency": region.get("currency"),
+                            "unit": "ratio" if metric_key == "debt_ratio" and "%" in raw_value else region.get("unit"),
+                            "ambiguous": ambiguous,
+                            "previous_candidates": metric_sources.get(metric_key),
                         }
                         metric_sources[metric_key] = source
                         table_evidence.append(source)
@@ -275,12 +293,15 @@ OUTPUT FORMAT:
             return None
         s = s.replace(",", "")
         s = s.replace("，", "")
-        s = s.replace("%", "")
-        match = re.search(r"[-+]?\d*\.?\d+", s)
+        s = s.replace("%", "").strip()
+        if s.startswith("(") and s.endswith(")"):
+            s = "-" + s[1:-1].strip()
+        match = re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", s)
         if not match:
             return None
         try:
-            return float(match.group(0))
+            value = float(match.group(0))
+            return value if math.isfinite(value) else None
         except Exception:
             return None
 
@@ -445,7 +466,8 @@ OUTPUT FORMAT:
                 return None
             if isinstance(value, dict):
                 return self._safe_float(value.get("value"))
-            return float(value)
+            number = float(value)
+            return number if math.isfinite(number) else None
         except Exception:
             return None
 

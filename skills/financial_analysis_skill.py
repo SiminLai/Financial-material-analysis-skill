@@ -11,23 +11,21 @@ class FinancialAnalysisSkill(BaseSkill):
     description = "Analyze financial documents including PDF parsing, metric extraction, risk analysis and report generation"
 
     input_schema = {
-        "type": "str",
+        "type": "any",
     }
 
     output_schema = {
         "type": "dict",
-        "required_fields": ["summary", "risk_assessment", "recommendation", "key_points", "meta"],
+        "required_fields": ["status", "run_id", "artifact_paths"],
         "field_types": {
-            "summary": str,
-            "risk_assessment": str,
-            "recommendation": str,
-            "key_points": list,
-            "meta": dict,
+            "status": str,
+            "run_id": str,
+            "artifact_paths": dict,
         },
     }
 
-    def __init__(self, workflow):
-        self._workflow = workflow
+    def __init__(self, workflow=None):
+        self._workflow = workflow or FinancialWorkflow()
 
     def _execute(self, input_data: Any) -> Any:
 

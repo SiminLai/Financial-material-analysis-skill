@@ -11,6 +11,7 @@ __pycache__/
 # ======================
 venv/
 .venv/
+.tools/
 env/
 
 # Anaconda
@@ -60,6 +61,7 @@ Thumbs.db
 # Agent runtime workspace
 # ======================
 workspace/cache/
+workspace/runs/
 workspace/traces/
 workspace/vectors/
 workspace/evidence/
@@ -82,7 +84,3 @@ workspace/lessons/
 build/
 dist/
 *.egg-info/
-
-scripts/
-
-tests/

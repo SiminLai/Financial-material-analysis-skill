@@ -35,7 +35,7 @@ class MCPManager:
         config = self.config["servers"][server_name]
 
 
-        env = {}
+        env = os.environ.copy()
 
         # Runtime secret injection
         if server_name == "tavily":

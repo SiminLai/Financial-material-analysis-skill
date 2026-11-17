@@ -1,28 +1,33 @@
-# Financial Report Analysis Skill / 财务报告分析技能
+# Evidence-first Financial Research / 证据优先财报研究
 
-Current pipeline / 当前流程:
+当前正式入口是 main.py 或 runtime.runtime.analyze_document。
+流程：PDF/XLSX → 解析 → 指标抽取 → 有条件派生 → 证据与口径检查 → 风险规则 → 研究底稿 → 交付校验。
 
-`PDF/XLSX -> parser -> metric -> risk -> (optional browser/MCP) -> report -> reflection validation`
+## 运行
 
-Boundaries / 边界约束:
+    python -m pip install -r requirements.txt
+    python main.py --input-file "examples/Quarterly financial statements Q1_2025.xlsx" --demo
 
-- Metrics and `risk_score` are internal ground truth; external evidence is supporting-only.
-- 指标与 `risk_score` 为内部真值，外部证据仅作辅助，不可覆盖核心数值。
-- Missing critical values such as `debt_ratio` remain `None`; the skill does not invent default values.
-- 当关键字段缺失、跨层冲突或证据不足时，`needs_review` 会被置为 `True`，并将推荐结果强制改为 `REVIEW`。
-- Reflection exposes component-level scores and blockers rather than forcing a single aggregate score when evidence is incomplete.
+正式调用需要 DEEPSEEK_API_KEY，可通过 --model 指定模型。输入材料会发送给模型服务，应事先确认数据授权。
+演示模式不调用模型 API，不能通过正式交付门槛。外部搜索默认关闭。
 
-Choose your preferred language:
+stdout 为一个 JSON 结果，日志输出 stderr。退出码：0 成功、2 待复核、1 失败。
+每次任务写入 workspace/runs/<run_id>/，result.json 是正式交付封装；独立报告文件不应绕过运行状态消费。
+缺失、不明确或不可比较的数据保留待复核，不生成 BUY/HOLD/SELL。
 
-选择你的首选语言：
+## 可选前端
 
-- [English](README_en.md)
-- [中文](README_zh.md)
+直接打开 frontend/index.html，选择本地 result.json。无需服务器前端进程、不上传、不调用模型。
+服务器资源紧张时，不部署 frontend 目录即可；后端没有前端依赖。
+详情见 frontend/README.md。
 
-See the system architecture diagram in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## 验收与修改记录
 
-免责声明 / Disclaimer
+    python scripts/verify_release.py
+    node tests/test_frontend.cjs
 
-本 Skill 提供的财报分析、指标提取、风险评估及生成内容仅供参考，不构成任何投资、法律、审计或财务建议。用户应结合原始财务报告及专业人士意见独立判断，因使用本 Skill 输出而产生的任何决策或损失，开发者不承担任何责任。
+修改位置、修改原因、目标机器步骤及限制见 docs/UPGRADE_BATCH_2.md。
+本机未执行 Python 测试。请在目标机器完成验证后再使用真实数据。
+README_en.md、README_zh.md 及旧架构图为历史设计资料；与此入口说明冲突时以本文件和升级记录为准。
 
-The financial analysis, metric extraction, risk assessment, and generated content provided by this Skill are for informational purposes only and do not constitute investment, legal, audit, or financial advice. Users should independently verify all results against the original financial reports and consult qualified professionals where appropriate. The developers assume no liability for any decisions or losses arising from the use of this Skill.
+本项目辅助材料研究，不保证投资收益，不替代专业判断。公司身份、公告时点及投资有效性尚需单独验证。

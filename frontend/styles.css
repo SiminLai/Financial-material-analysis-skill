@@ -1,0 +1,10 @@
+:root { font-family: system-ui,"Microsoft YaHei",sans-serif; color: #203444; background: #f3f6f8; color-scheme: light; }
+* { box-sizing: border-box; } body { margin: 0; } main { max-width: 1150px; margin: auto; padding: 40px 24px; }
+header span { color: #33736a; font-size: 12px; letter-spacing: 2px; } h1 { font-size: clamp(28px,4vw,42px); } h2 { font-size: 20px; }
+p { color: #5c6e7b; line-height: 1.7; } section { background: white; border: 1px solid #dce5e9; border-radius: 12px; padding: 24px; margin: 20px 0; }
+.notice { background: #e9f4ef; color: #285c4e; } label { display: block; margin-bottom: 16px; font-weight: 650; } input { max-width: 100%; }
+input::file-selector-button { background: #235d56; color: white; border: 0; border-radius: 6px; padding: 12px 18px; margin-right: 12px; cursor: pointer; }
+.overview { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 24px; } strong { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: 14px; } th,td { text-align: left; padding: 14px 10px; border-bottom: 1px solid #e6ebef; vertical-align: top; } th { background: #f7f9fa; white-space: nowrap; }
+li { padding: 6px 0; overflow-wrap: anywhere; } details { padding: 12px 0; border-bottom: 1px solid #e6ebef; } summary { cursor: pointer; } pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f6f8fa; padding: 16px; }
+.error { color: #a33333; } @media(max-width:650px) { main { padding: 20px 12px; } section { padding: 16px; } .overview { grid-template-columns: 1fr; } }

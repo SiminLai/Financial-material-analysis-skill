@@ -60,22 +60,27 @@ class ExcelProvider(BaseProvider):
         for sheet_name in workbook.sheetnames:
             sheet = workbook[sheet_name]
             rows = []
+            row_numbers = []
             sheet_lines = [f"--- Sheet: {sheet_name} ---"]
-            for row in sheet.iter_rows(values_only=True):
+            for row_number, row in enumerate(sheet.iter_rows(values_only=True), 1):
                 row_values = ["" if cell is None else str(cell) for cell in row]
                 if any(cell != "" for cell in row_values):
                     rows.append(row_values)
+                    row_numbers.append(row_number)
                     sheet_lines.append("\t".join(row_values))
             if rows:
                 tables.append({
                     "sheet": sheet_name,
                     "rows": rows,
+                    "row_numbers": row_numbers,
                 })
             raw_text += "\n" + "\n".join(sheet_lines)
 
+        workbook.close()
         return {
             "text": raw_text.strip(),
             "tables": tables,
+            "table_regions": tables,
             "meta": {
                 "source": xlsx_path,
                 "sheets": len(workbook.sheetnames),

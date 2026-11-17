@@ -1,8 +1,4 @@
-try:
-    from langgraph.graph import START, END
-except Exception:
-    START = "__start__"
-    END = "__end__"
+from langgraph.graph import START, END
 
 from .router import route_after_risk
 
@@ -26,8 +22,10 @@ def build_edges(builder, enable_browser: bool):
 
     builder.add_edge(
         "metric",
-        "risk"
+        "impute"
     )
+
+    builder.add_edge("impute", "risk")
 
 
 
