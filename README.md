@@ -5,6 +5,8 @@
 
 ## 运行
 
+部署前请阅读 [配置与目标机器部署清单](docs/CONFIGURATION.md)，包括密钥、PDF/OCR、可选前端、资源限制及验收步骤。
+
     python -m pip install -r requirements.txt
     python main.py --input-file "examples/Quarterly financial statements Q1_2025.xlsx" --demo
 
@@ -17,11 +19,15 @@ stdout 为一个 JSON 结果，日志输出 stderr。退出码：0 成功、2 �
 
 ## 可选前端
 
-直接打开 frontend/index.html，选择本地 result.json。无需服务器前端进程、不上传、不调用模型。
-服务器资源紧张时，不部署 frontend 目录即可；后端没有前端依赖。
+运行 python server.py 启动可选本机工作台，支持令牌鉴权、上传、任务管理和 A2UI v0.9 研究结果展示。
+也可直接打开 frontend/index.html 导入本地结果，但不支持服务端上传。
+服务器资源紧张时，不启动 server.py 即可；CLI 没有前端依赖。
 详情见 frontend/README.md。
 
 ## 验收与修改记录
+
+逐页 PDF/OCR、可选 Docling、人工标注评测与原文预览见 docs/PARSING_UPGRADE.md。
+解析配置使用 PDF_ENGINE、PDF_OCR、PDF_OCR_LANGUAGE、PDF_OCR_DPI 环境变量；默认引擎尚未根据真实基准重新选型。
 
     python scripts/verify_release.py
     node tests/test_frontend.cjs

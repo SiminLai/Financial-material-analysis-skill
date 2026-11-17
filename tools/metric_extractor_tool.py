@@ -260,6 +260,8 @@ OUTPUT FORMAT:
                         source = {
                             "source_type": "table",
                             "page": page,
+                            "bbox": region.get("bbox"),
+                            "engine": region.get("engine"),
                             "row": row_cells,
                             "sheet": region.get("sheet"),
                             "row_number": (region.get("row_numbers") or list(range(1, len(rows) + 1)))[row_index],

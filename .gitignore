@@ -62,6 +62,8 @@ Thumbs.db
 # ======================
 workspace/cache/
 workspace/runs/
+workspace/web/
+workspace/benchmark/
 workspace/traces/
 workspace/vectors/
 workspace/evidence/

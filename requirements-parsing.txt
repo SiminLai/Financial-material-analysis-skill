@@ -1,0 +1,4 @@
+# Optional extras; validate and lock exact versions on the target machine.
+PyMuPDF>=1.24,<2
+docling>=2,<3
+# OCR also requires the system Tesseract executable and chi_sim/eng language data.

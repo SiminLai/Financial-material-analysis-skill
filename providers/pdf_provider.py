@@ -115,7 +115,8 @@ class PDFProvider(BaseProvider):
         return table_regions
 
     def _request(self, pdf_path: str, **kwargs):
-        return self._parse_pdf(pdf_path)
+        from providers.document_pipeline import parse_document
+        return parse_document(pdf_path)
 
     def _parse_pdf(self, pdf_path: str):
         if not os.path.isfile(pdf_path):

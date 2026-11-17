@@ -20,7 +20,8 @@ def main():
             except (SyntaxError, UnicodeError) as error:
                 failures.append(str(error))
     try:
-        ast.parse((root / "main.py").read_text(encoding="utf-8"))
+        for entry in ("main.py", "server.py"):
+            ast.parse((root / entry).read_text(encoding="utf-8"))
     except SyntaxError as error:
         failures.append(str(error))
     versions = {}

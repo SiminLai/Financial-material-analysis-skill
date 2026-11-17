@@ -120,6 +120,11 @@ async def analyze_document(input_file, output_dir="workspace/runs", run_id=None,
                                     config={"configurable": {"thread_id": identifier}})
         if source_hash(source) != manifest["source_sha256"]:
             raise ValueError("Source changed during analysis; results cannot be published")
+        result["document_meta"] = state.get("document", {}).get("meta", {})
+        result["page_quality"] = [{key: value for key, value in page.items() if key not in {"text", "blocks"}}
+                                  for page in state.get("document", {}).get("pages", [])]
+        write_json(directory / "document.json", state.get("document", {}))
+        result["artifact_paths"]["document"] = str(directory / "document.json")
         for key in ("status", "facts", "evidence", "report", "validation", "risk"):
             result[key] = state[key]
         if result["status"] not in {"succeeded", "needs_review"}:

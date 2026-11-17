@@ -31,6 +31,8 @@ def create_finance_graph(parser_tool, metric_tool, risk_tool, browser_tool=None,
     def derive(state):
         metrics = compute_debt_ratio_from_evidence(None, state["metrics"])
         facts, evidence, issues = build_facts(metrics, state["input_file"])
+        issues.extend({"code": "document_parse_warning", "severity": "blocking", **warning}
+                      for warning in state["document"].get("meta", {}).get("parse_warnings", []))
         return {"metrics": metrics, "facts": facts, "evidence": evidence, "issues": issues}
 
     def risk(state):

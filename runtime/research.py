@@ -33,6 +33,8 @@ def build_facts(metrics, input_file):
             references.append(evidence_id)
             evidence.append({"id": evidence_id, "source_file": input_file,
                              "page": source.get("page"), "sheet": source.get("sheet"),
+                             "bbox": source.get("bbox"), "coordinate_system": "page_points_top_left",
+                             "parser_engine": source.get("engine"),
                              "row_number": source.get("row_number"), "column_number": source.get("column_number"),
                              "raw_value": source.get("raw_value"), "content": source["row"],
                              "header": source.get("header"), "origin": "document"})

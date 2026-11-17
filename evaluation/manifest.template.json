@@ -1,0 +1,8 @@
+{
+  "cases": [
+    {"id": "native-zh-table", "file": "replace-with-relative-path.pdf", "sha256": "REPLACE", "reviewed": false,
+     "category": "native/chinese/multi-period", "rows": [{"page": 1, "row": ["人工抄录指标", "本期数值", "上期数值"]}]},
+    {"id": "scan-en-table", "file": "replace-with-scanned-path.pdf", "sha256": "REPLACE", "reviewed": false,
+     "category": "scanned/english/table", "rows": []}
+  ]
+}
